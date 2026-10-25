@@ -1,0 +1,175 @@
+/* Anmeldung mit Account-Code, Account in den Einstellungen, Speicher-Hinweis */
+
+/* Solange niemand angemeldet ist, ist nur das Anmeldefenster bedienbar */
+body.login-open > :not(.login-overlay) {
+  pointer-events: none;
+  filter: blur(6px);
+  transition: filter 0.3s ease;
+}
+.login-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(5, 10, 20, 0.35);
+}
+.login-card {
+  width: min(340px, 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 28px 26px 22px;
+  color: #ffffff;
+  text-align: center;
+  border-radius: 22px;
+}
+.login-logo {
+  font-size: 34px;
+}
+.login-card h1 {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+.login-hint {
+  margin: 0;
+  font-size: 14px;
+  opacity: 0.85;
+}
+.login-code {
+  width: 190px;
+  padding: 10px 12px;
+  font: inherit;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: 0.45em;
+  text-align: center;
+  text-indent: 0.45em;
+  color: #ffffff;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 12px;
+  outline: none;
+}
+.login-code:focus {
+  border-color: #ffffff;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.2);
+}
+.login-remember {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  opacity: 0.9;
+  cursor: pointer;
+}
+.login-button {
+  width: 100%;
+  padding: 10px;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  color: #ffffff;
+  background: #2fb35e;
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.login-button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.login-message {
+  min-height: 1.3em;
+  margin: 0;
+  font-size: 13px;
+  color: #ffd38a;
+}
+.login-card.shake {
+  animation: login-shake 0.4s ease;
+}
+@keyframes login-shake {
+  20%, 60% { transform: translateX(-8px); }
+  40%, 80% { transform: translateX(8px); }
+}
+
+/* Einstellungen: Account */
+.account-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+.account-avatar {
+  flex-shrink: 0;
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  font-size: 17px;
+  font-weight: 800;
+  background: rgba(255, 255, 255, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 50%;
+}
+.account-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.account-info strong {
+  font-size: 15px;
+}
+.account-status {
+  font-size: 12px;
+  opacity: 0.8;
+}
+.account-status[data-state="error"] {
+  color: #ffb4a8;
+  opacity: 1;
+}
+.account-logout {
+  flex-shrink: 0;
+  padding: 6px 12px;
+  font: inherit;
+  font-size: 13px;
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.account-logout:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+/* Kleiner Hinweis oben, solange gespeichert wird oder etwas schiefging */
+.save-badge {
+  position: fixed;
+  top: 52px;
+  right: 16px;
+  z-index: 60;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #ffffff;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 999px;
+  pointer-events: none;
+}
+.save-badge[hidden] {
+  display: none;
+}
+.save-badge[data-state="error"] {
+  background: rgba(200, 50, 40, 0.75);
+  border-color: rgba(255, 180, 170, 0.8);
+  pointer-events: auto;
+}

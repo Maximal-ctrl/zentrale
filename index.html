@@ -1,0 +1,2889 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Zentrale</title>
+  <style>
+    /* Animierbare Größen für den Kalender:
+       --cell = Kantenlänge eines Tages-Kästchens, --show = Beschriftung sichtbar (0 bis 1) */
+    @property --cell {
+      syntax: '<length>';
+      inherits: true;
+      initial-value: 10px;
+    }
+    @property --show {
+      syntax: '<number>';
+      inherits: true;
+      initial-value: 0;
+    }
+    /* --open = große Kalender-Ansicht aktiv (0 bis 1), blendet die rechte Spalte ein */
+    @property --open {
+      syntax: '<number>';
+      inherits: true;
+      initial-value: 0;
+    }
+
+    :root {
+      --card-w: 460px;
+      --card-h: 180px;
+      --tiny: 0.3;
+      --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+
+    html, body {
+      height: 100%;
+      margin: 0;
+    }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      color: #ffffff;
+      background: #1f3b2e center / cover no-repeat fixed;
+      transition: background-image 0.6s ease;
+      overflow: hidden;
+    }
+
+    /* Obere Leiste */
+    .topbar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 44px;
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      background: rgba(70, 70, 70, 0.12);
+      backdrop-filter: blur(3px);
+      -webkit-backdrop-filter: blur(3px);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+      box-sizing: border-box;
+      z-index: 20;
+    }
+    .home-button {
+      padding: 4px 14px;
+      font: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      color: #ffffff;
+      /* Leicht dunkle Tönung + dunkler Außenring, damit der Button auch auf hellen Bildern sichtbar bleibt */
+      background: rgba(0, 0, 0, 0.22);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      border: 1px solid rgba(255, 255, 255, 0.8);
+      border-radius: 8px;
+      box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.18), 0 2px 8px rgba(0, 0, 0, 0.25);
+      cursor: pointer;
+      text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+      transition: background 0.2s, border-color 0.2s;
+    }
+    .home-button:hover {
+      background: rgba(0, 0, 0, 0.34);
+      border-color: #ffffff;
+    }
+    .home-button:active {
+      background: rgba(0, 0, 0, 0.45);
+    }
+
+    .settings-button {
+      margin-left: auto;
+    }
+
+    /* Seitenfenster "Einstellungen" (fährt von rechts herein) */
+    .drawer-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.15);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s;
+      z-index: 30;
+    }
+    body.settings-open .drawer-backdrop {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .settings-drawer {
+      position: fixed;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      width: min(360px, calc(100vw - 32px));
+      padding: 16px 20px;
+      box-sizing: border-box;
+      overflow-y: auto;
+      color: #ffffff;
+      background: rgba(20, 20, 20, 0.5);
+      backdrop-filter: blur(16px) saturate(130%);
+      -webkit-backdrop-filter: blur(16px) saturate(130%);
+      border-left: 1px solid rgba(255, 255, 255, 0.25);
+      box-shadow: -12px 0 40px rgba(0, 0, 0, 0.3);
+      text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+      transform: translateX(105%);
+      transition: transform 0.35s var(--ease);
+      z-index: 31;
+    }
+    body.settings-open .settings-drawer {
+      transform: translateX(0);
+    }
+    .drawer-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    .drawer-head h2 {
+      margin: 0;
+      font-size: 20px;
+    }
+    .drawer-close {
+      padding: 0 8px;
+      font: inherit;
+      font-size: 22px;
+      color: #ffffff;
+      background: none;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    .drawer-close:hover {
+      background: rgba(255, 255, 255, 0.18);
+    }
+    .settings-section {
+      padding: 14px;
+      background: rgba(255, 255, 255, 0.07);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 14px;
+    }
+    .settings-section h3 {
+      margin: 0 0 6px;
+      font-size: 13px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      opacity: 0.85;
+    }
+    .setting-row {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 10px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+      cursor: pointer;
+    }
+    .setting-row.disabled {
+      opacity: 0.45;
+      cursor: default;
+    }
+    .setting-text {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .setting-text strong {
+      font-size: 14px;
+    }
+    .setting-text small {
+      font-size: 12px;
+      line-height: 1.35;
+      opacity: 0.75;
+    }
+    /* Schalter (Checkbox im Schalter-Look) */
+    .switch {
+      appearance: none;
+      -webkit-appearance: none;
+      flex-shrink: 0;
+      position: relative;
+      width: 42px;
+      height: 24px;
+      margin: 0;
+      background: rgba(255, 255, 255, 0.25);
+      border: 1px solid rgba(255, 255, 255, 0.5);
+      border-radius: 999px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .switch::before {
+      content: '';
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 18px;
+      height: 18px;
+      background: #ffffff;
+      border-radius: 50%;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+      transition: transform 0.2s var(--ease);
+    }
+    .switch:checked {
+      background: #34d36b;
+      border-color: #bff5d0;
+    }
+    .switch:checked::before {
+      transform: translateX(18px);
+    }
+    .switch:disabled {
+      cursor: default;
+    }
+    .switch:focus-visible {
+      outline: 2px solid #ffffff;
+      outline-offset: 2px;
+    }
+    .setting-status {
+      margin: 12px 0 0;
+      font-size: 13px;
+      line-height: 1.4;
+    }
+    .setting-status:empty {
+      display: none;
+    }
+    .setting-status.warn {
+      color: #ffd0d0;
+    }
+    .settings-section + .settings-section {
+      margin-top: 14px;
+    }
+    /* Kategorien in den Einstellungen */
+    .category-intro {
+      margin: 0 0 10px;
+    }
+    .category-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .category-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+    }
+    .category-swatch,
+    .palette-swatch {
+      flex-shrink: 0;
+      width: 24px;
+      height: 24px;
+      padding: 0;
+      background: var(--c);
+      border: 2px solid rgba(255, 255, 255, 0.85);
+      border-radius: 50%;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+      cursor: pointer;
+    }
+    .palette-swatch {
+      width: 20px;
+      height: 20px;
+      border-color: transparent;
+    }
+    .palette-swatch.selected {
+      border-color: #ffffff;
+      transform: scale(1.15);
+    }
+    .category-name {
+      flex: 1;
+      min-width: 0;
+      font: inherit;
+      font-size: 13px;
+      color: #ffffff;
+      background: rgba(255, 255, 255, 0.12);
+      border: 1px solid rgba(255, 255, 255, 0.35);
+      border-radius: 6px;
+      padding: 5px 8px;
+    }
+    .category-name:focus {
+      outline: none;
+      border-color: #ffffff;
+    }
+    .category-remove {
+      flex-shrink: 0;
+      padding: 0 6px;
+      font: inherit;
+      font-size: 18px;
+      color: #ffffff;
+      background: none;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      opacity: 0.75;
+    }
+    .category-remove:hover {
+      background: rgba(255, 255, 255, 0.18);
+      opacity: 1;
+    }
+    .category-palette {
+      flex-basis: 100%;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      padding: 6px 0 4px 32px;
+    }
+    .category-palette[hidden] {
+      display: none;
+    }
+    .category-add {
+      margin-top: 10px;
+      font: inherit;
+      font-size: 13px;
+      color: #ffffff;
+      background: rgba(255, 255, 255, 0.12);
+      border: 1px dashed rgba(255, 255, 255, 0.55);
+      border-radius: 8px;
+      padding: 6px 10px;
+      cursor: pointer;
+    }
+    .category-add:hover:not(:disabled) {
+      background: rgba(255, 255, 255, 0.22);
+    }
+    .category-add:disabled {
+      opacity: 0.5;
+      cursor: default;
+    }
+    .setting-note {
+      margin: 10px 0 0;
+      font-size: 11px;
+      line-height: 1.4;
+      opacity: 0.65;
+    }
+
+    /* Sprachassistent Edith: runder Knopf unten links, Gesprächsfenster darüber */
+    .edith {
+      position: fixed;
+      left: 16px;
+      bottom: 16px;
+      z-index: 25;
+    }
+    .edith[hidden] {
+      display: none;
+    }
+    .edith-orb {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 52px;
+      height: 52px;
+      padding: 0;
+      color: #ffffff;
+      background: rgba(0, 0, 0, 0.22);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.75);
+      border-radius: 50%;
+      box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.18), 0 6px 18px rgba(0, 0, 0, 0.3);
+      cursor: pointer;
+      transition: background 0.2s, transform 0.2s;
+    }
+    .edith-orb:hover {
+      background: rgba(0, 0, 0, 0.34);
+      transform: scale(1.06);
+    }
+    /* Hört im Hintergrund auf "Edith": kleiner grüner Punkt */
+    .edith-orb.listening {
+      background-image: radial-gradient(circle at 78% 22%, #34d36b 0 4px, transparent 5px);
+    }
+    /* Hört gerade aktiv zu (Gespräch läuft): grün pulsierend */
+    .edith-orb.active {
+      background-color: rgba(52, 211, 107, 0.45);
+      border-color: #bff5d0;
+      animation: edith-pulse 1.4s ease-in-out infinite;
+    }
+    /* Spricht gerade */
+    .edith-orb.speaking {
+      background-color: rgba(255, 255, 255, 0.3);
+      animation: edith-pulse 0.9s ease-in-out infinite;
+    }
+    /* Pegel-Ring: wächst mit der Lautstärke am Mikrofon (--level 0 bis 1, kommt aus edith.js) */
+    .edith-orb {
+      --level: 0;
+      position: relative;
+    }
+    .edith-orb::before {
+      content: '';
+      position: absolute;
+      inset: -3px;
+      border: 2px solid rgba(255, 255, 255, 0.85);
+      border-radius: 50%;
+      transform: scale(calc(1 + var(--level) * 0.5));
+      opacity: calc(var(--level) * 1.8);
+      pointer-events: none;
+      transition: transform 0.08s linear, opacity 0.08s linear, border-color 0.2s;
+    }
+    /* Stimme wird gehört: Mikrofon-Symbol hüpft leicht */
+    .edith-orb.hearing svg {
+      transform: scale(calc(1 + var(--level) * 0.35));
+      transition: transform 0.08s linear;
+    }
+    /* Stummgeschaltet: rot, Mikrofon durchgestrichen, kein Pegel-Ring */
+    .edith-orb.muted {
+      background: rgba(220, 40, 40, 0.55) !important;
+      border-color: #ffb3b3 !important;
+      box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.18), 0 0 16px rgba(255, 60, 60, 0.55), 0 6px 18px rgba(0, 0, 0, 0.3);
+      animation: none !important;
+    }
+    .edith-orb.muted::before {
+      display: none;
+    }
+    .edith-orb.muted::after {
+      content: '';
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: 30px;
+      height: 3px;
+      background: #ffffff;
+      border-radius: 2px;
+      box-shadow: 0 0 0 1.5px rgba(200, 30, 30, 0.9);
+      transform: translate(-50%, -50%) rotate(-45deg);
+      pointer-events: none;
+    }
+    /* Beim langen Drücken: Knopf drückt sich langsam ein */
+    .edith-orb.pressing {
+      transform: scale(0.9);
+      transition: transform 0.6s linear;
+    }
+    /* Wörter werden erkannt: grün */
+    .edith-orb.recognizing {
+      background-color: rgba(52, 211, 107, 0.55);
+      border-color: #bff5d0;
+    }
+    .edith-orb.recognizing::before {
+      border-color: #34d36b;
+      box-shadow: 0 0 14px rgba(52, 211, 107, 0.85);
+      opacity: max(0.6, calc(var(--level) * 1.8));
+    }
+    @keyframes edith-pulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(52, 211, 107, 0.55), 0 6px 18px rgba(0, 0, 0, 0.3); }
+      50% { box-shadow: 0 0 0 10px rgba(52, 211, 107, 0), 0 6px 18px rgba(0, 0, 0, 0.3); }
+    }
+    .edith-panel {
+      position: absolute;
+      left: 0;
+      bottom: 64px;
+      width: min(320px, calc(100vw - 32px));
+      padding: 12px;
+      box-sizing: border-box;
+      font-size: 13px;
+      color: #ffffff;
+      background: rgba(20, 20, 20, 0.5);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      border-radius: 14px;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+      text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+    }
+    .edith-panel[hidden] {
+      display: none;
+    }
+    .edith-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .edith-state {
+      flex: 1;
+      font-size: 12px;
+      opacity: 0.75;
+    }
+    .edith-close {
+      padding: 0 6px;
+      font: inherit;
+      font-size: 16px;
+      color: #ffffff;
+      background: none;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .edith-close:hover {
+      background: rgba(255, 255, 255, 0.18);
+    }
+    .edith-log {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      max-height: 220px;
+      overflow-y: auto;
+    }
+    .edith-msg {
+      max-width: 88%;
+      padding: 6px 9px;
+      line-height: 1.35;
+      border-radius: 10px;
+    }
+    .edith-msg.user {
+      align-self: flex-end;
+      background: rgba(255, 255, 255, 0.18);
+    }
+    .edith-msg.bot {
+      align-self: flex-start;
+      background: rgba(52, 211, 107, 0.28);
+      border: 1px solid rgba(191, 245, 208, 0.45);
+    }
+    .edith-interim {
+      margin-top: 6px;
+      font-style: italic;
+      opacity: 0.7;
+    }
+    .edith-interim:empty {
+      display: none;
+    }
+    .edith-form {
+      display: flex;
+      gap: 6px;
+      margin-top: 10px;
+    }
+    .edith-form input,
+    .edith-form button {
+      font: inherit;
+      color: #ffffff;
+      background: rgba(255, 255, 255, 0.15);
+      border: 1px solid rgba(255, 255, 255, 0.4);
+      border-radius: 6px;
+      padding: 6px 8px;
+    }
+    .edith-form input {
+      flex: 1;
+      min-width: 0;
+    }
+    .edith-form input::placeholder {
+      color: rgba(255, 255, 255, 0.65);
+    }
+    .edith-form input:focus {
+      outline: none;
+      border-color: #ffffff;
+    }
+    /* Live-Text aus der Spracherkennung */
+    .edith-form input.live {
+      font-style: italic;
+      border-color: #34d36b;
+      box-shadow: 0 0 0 1px rgba(52, 211, 107, 0.5);
+    }
+    .edith-form button {
+      cursor: pointer;
+    }
+
+    /* Gemeinsamer Glas-Look */
+    .glass {
+      background: rgba(255, 255, 255, 0.08);
+      backdrop-filter: blur(4px) saturate(120%);
+      -webkit-backdrop-filter: blur(4px) saturate(120%);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
+      text-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+    }
+
+    /* Uhr-Block: feste Größe, damit er nicht mit den Ziffern oder Wochentagen springt.
+       Startseite: mittig, auf 75 % verkleinert, beim Hovern volle Größe.
+       Kalender-Ansicht: ganz klein oben links. */
+    .clock-card {
+      position: fixed;
+      left: 50%;
+      top: calc(50% + 22px);
+      width: var(--card-w);
+      height: var(--card-h);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      box-sizing: border-box;
+      text-align: center;
+      border-radius: 24px;
+      transform: translate(-50%, -50%) scale(0.75);
+      transition: left 0.6s var(--ease), top 0.6s var(--ease), transform 0.45s var(--ease);
+      z-index: 10;
+    }
+    body:not(.view-open) .clock-card:hover {
+      transform: translate(-50%, -50%) scale(1);
+    }
+    /* Große Ansicht offen (Kalender, Ideen, Gewohnheiten): Uhr ganz klein oben links */
+    body.view-open .clock-card {
+      left: calc(16px + var(--card-w) * var(--tiny) / 2);
+      top: calc(56px + var(--card-h) * var(--tiny) / 2);
+      transform: translate(-50%, -50%) scale(var(--tiny));
+      transition: left 0.6s var(--ease), top 0.6s var(--ease), transform 0.6s var(--ease);
+    }
+    .clock-time {
+      font-size: 80px;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+      line-height: 1;
+      font-variant-numeric: tabular-nums;
+    }
+    .clock-date {
+      margin-top: 14px;
+      font-size: 20px;
+      font-weight: 500;
+      white-space: nowrap;
+      opacity: 0.95;
+    }
+    /* Kleiner Strich und darunter der nächste Termin */
+    .clock-next {
+      max-width: 88%;
+      font-size: 15px;
+      font-weight: 400;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .clock-next::before {
+      content: '';
+      display: block;
+      width: 56px;
+      height: 1px;
+      margin: 10px auto 8px;
+      background: rgba(255, 255, 255, 0.65);
+    }
+    .clock-next .label {
+      opacity: 0.8;
+    }
+    .clock-next strong {
+      font-weight: 700;
+    }
+    .clock-next.empty {
+      opacity: 0.7;
+    }
+
+    /* Kalender: Startseite = Mini-Kästchen unten rechts, Hover = größer mit Beschriftung,
+       Klick = große Kalender-Ansicht in der Mitte. Alle Maße hängen an --cell. */
+    .calendar {
+      --gap: calc(1px + var(--cell) * 0.2);
+      position: fixed;
+      right: 16px;
+      bottom: 16px;
+      padding: calc(6px + var(--cell) * 0.4);
+      border-radius: calc(8px + var(--cell) * 0.3);
+      transform: translate(0, 0);
+      cursor: pointer;
+      outline: none;
+      display: flex;
+      transition:
+        --cell 0.45s var(--ease),
+        --show 0.35s var(--ease),
+        --open 0.45s var(--ease),
+        right 0.6s var(--ease),
+        bottom 0.6s var(--ease),
+        transform 0.6s var(--ease),
+        opacity 0.3s ease;
+      z-index: 10;
+    }
+    /* Ist eine andere große Ansicht offen, verschwindet der Mini-Kalender */
+    body.view-open:not(.calendar-open) .calendar {
+      opacity: 0;
+      pointer-events: none;
+    }
+    body:not(.view-open) .calendar:hover,
+    body:not(.view-open) .calendar:focus-visible {
+      --cell: 20px;
+      --show: 1;
+    }
+    body.calendar-open .calendar {
+      --cell: min(64px, calc((100vw - 120px) / 12.5), calc((100vh - 260px) / 9));
+      --show: 1;
+      --open: 1;
+      right: 50%;
+      bottom: 50%;
+      transform: translate(50%, calc(50% + 22px));
+      cursor: default;
+      transition:
+        --cell 0.6s var(--ease),
+        --show 0.4s var(--ease),
+        --open 0.6s var(--ease),
+        right 0.6s var(--ease),
+        bottom 0.6s var(--ease),
+        transform 0.6s var(--ease);
+    }
+
+    .cal-title {
+      height: calc(var(--cell) * 0.9 * var(--show));
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: calc(var(--cell) * 0.45);
+      font-weight: 700;
+      line-height: calc(var(--cell) * 0.9);
+      text-align: center;
+      white-space: nowrap;
+      overflow: hidden;
+      opacity: var(--show);
+    }
+    /* Kleiner "Heute"-Knopf über dem Monat, nur in der großen Ansicht */
+    .cal-today-row {
+      height: calc(var(--cell) * 0.42 * var(--open));
+      display: flex;
+      justify-content: center;
+      align-items: flex-end;
+      overflow: hidden;
+      opacity: var(--open);
+    }
+    .cal-today {
+      padding: calc(var(--cell) * 0.03) calc(var(--cell) * 0.18);
+      font: inherit;
+      font-size: calc(var(--cell) * 0.19);
+      font-weight: 600;
+      line-height: 1.2;
+      color: #ffffff;
+      background: rgba(255, 255, 255, 0.12);
+      border: 1px solid rgba(255, 255, 255, 0.45);
+      border-radius: 999px;
+      text-shadow: inherit;
+      cursor: pointer;
+      pointer-events: none;
+      transition: background 0.2s;
+    }
+    body.calendar-open .cal-today {
+      pointer-events: auto;
+    }
+    .cal-today:hover {
+      background: rgba(255, 255, 255, 0.28);
+    }
+    .cal-today.is-current {
+      opacity: 0.55;
+    }
+
+    /* Pfeile zum Monat wechseln, nur in der großen Ansicht sichtbar */
+    .cal-nav {
+      flex-shrink: 0;
+      width: calc(var(--cell) * 0.7);
+      height: calc(var(--cell) * 0.7);
+      padding: 0;
+      font: inherit;
+      font-size: calc(var(--cell) * 0.45);
+      line-height: 1;
+      color: #ffffff;
+      background: rgba(255, 255, 255, 0.12);
+      border: 1px solid rgba(255, 255, 255, 0.4);
+      border-radius: 50%;
+      text-shadow: inherit;
+      cursor: pointer;
+      opacity: var(--open);
+      pointer-events: none;
+      transition: background 0.2s;
+    }
+    body.calendar-open .cal-nav {
+      pointer-events: auto;
+    }
+    .cal-nav:hover {
+      background: rgba(255, 255, 255, 0.28);
+    }
+    .cal-weekdays,
+    .cal-days {
+      display: grid;
+      grid-template-columns: repeat(7, var(--cell));
+      gap: var(--gap);
+    }
+    .cal-weekdays {
+      height: calc(var(--cell) * 0.6 * var(--show));
+      margin-bottom: calc(var(--gap) * var(--show));
+      font-size: calc(var(--cell) * 0.34);
+      font-weight: 600;
+      line-height: calc(var(--cell) * 0.6);
+      text-align: center;
+      overflow: hidden;
+      opacity: var(--show);
+    }
+    .cal-weekdays .weekend {
+      opacity: 0.7;
+    }
+    .cal-days {
+      grid-auto-rows: var(--cell);
+    }
+    .cal-days .day {
+      position: relative;
+      overflow: hidden;
+      border-radius: calc(1px + var(--cell) * 0.15);
+      background: rgba(255, 255, 255, 0.22);
+      border: 1px solid rgba(255, 255, 255, 0.35);
+      box-sizing: border-box;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+    .cal-days .day.today {
+      background: #34d36b;
+      border-color: #bff5d0;
+      box-shadow: 0 0 6px rgba(52, 211, 107, 0.8);
+      font-weight: 800;
+    }
+    /* Tageszahl: mittig; beim Hovern (große Ansicht) kleiner und nach oben */
+    .day .num {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      font-size: calc(var(--cell) * 0.4);
+      line-height: 1;
+      opacity: var(--show);
+      transform: translate(-50%, -50%) scale(1);
+      transition: top 0.2s var(--ease), transform 0.2s var(--ease);
+    }
+    /* Termine eines Tages, nur beim Hovern sichtbar */
+    .day .events {
+      position: absolute;
+      left: 6%;
+      right: 6%;
+      top: 40%;
+      bottom: 5%;
+      overflow: hidden;
+      font-size: calc(var(--cell) * 0.15);
+      font-weight: 500;
+      line-height: 1.25;
+      text-align: center;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s var(--ease);
+    }
+    .day .events div {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    /* Kleiner Punkt: an diesem Tag gibt es Termine */
+    .day .dot {
+      position: absolute;
+      left: 50%;
+      bottom: 11%;
+      width: calc(var(--cell) * 0.09);
+      height: calc(var(--cell) * 0.09);
+      border-radius: 50%;
+      background: var(--dot-color, #ffd166);
+      box-shadow: 0 0 4px rgba(0, 0, 0, 0.4);
+      transform: translateX(-50%);
+      opacity: 0;
+      transition: opacity 0.2s var(--ease);
+    }
+    .day.today .dot {
+      box-shadow: 0 0 0 1px #ffffff, 0 0 4px rgba(0, 0, 0, 0.4);
+    }
+    /* Mehrtägige Termine: Tage farbig getönt, mit Balken unten (Farbe = Kategorie) */
+    body.calendar-open .day.in-range:not(.today) {
+      background: color-mix(in srgb, var(--range-color) 30%, rgba(255, 255, 255, 0.12));
+      border-color: color-mix(in srgb, var(--range-color) 70%, transparent);
+    }
+    .day.in-range::after {
+      content: '';
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: calc(var(--cell) * 0.09);
+      background: var(--range-color);
+      opacity: var(--open);
+      pointer-events: none;
+    }
+    .day.range-start::after {
+      left: 12%;
+      border-radius: 99px 0 0 99px;
+    }
+    .day.range-end::after {
+      right: 12%;
+      border-radius: 0 99px 99px 0;
+    }
+    .day.range-start.range-end::after {
+      border-radius: 99px;
+    }
+    body.calendar-open .day.has-events .dot {
+      opacity: var(--open);
+    }
+    body.calendar-open .day {
+      cursor: pointer;
+      transition: background 0.2s, border-color 0.2s;
+    }
+    body.calendar-open .day:not(.today):hover,
+    body.calendar-open .day.selected:not(.today) {
+      background: rgba(255, 255, 255, 0.32);
+      border-color: rgba(255, 255, 255, 0.7);
+    }
+    body.calendar-open .day.selected {
+      border-color: #ffffff;
+    }
+    body.calendar-open .day:hover .num,
+    body.calendar-open .day.selected .num {
+      top: 24%;
+      transform: translate(-50%, -50%) scale(0.65);
+    }
+    body.calendar-open .day:hover .events,
+    body.calendar-open .day.selected .events {
+      opacity: 1;
+    }
+    body.calendar-open .day:hover .dot,
+    body.calendar-open .day.selected .dot {
+      opacity: 0;
+    }
+
+    /* Rechte Spalte in der großen Ansicht: nächster Termin */
+    .cal-side {
+      position: relative;
+      flex-shrink: 0;
+      width: calc(var(--cell) * 3.6 * var(--open));
+      margin-left: calc(var(--gap) * 2 * var(--open));
+      overflow: hidden;
+      opacity: var(--open);
+      pointer-events: none;
+    }
+    body.calendar-open .cal-side {
+      pointer-events: auto;
+    }
+    .cal-side-inner {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 0;
+      width: calc(var(--cell) * 3.6);
+      padding: calc(var(--cell) * 0.3);
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      gap: calc(var(--cell) * 0.12);
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      border-radius: calc(var(--cell) * 0.2);
+    }
+    .next-label {
+      font-size: calc(var(--cell) * 0.2);
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      opacity: 0.8;
+    }
+    #next-event {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      gap: calc(var(--cell) * 0.16);
+      overflow-y: auto;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(255, 255, 255, 0.4) transparent;
+    }
+    .next-first {
+      display: flex;
+      flex-direction: column;
+      gap: calc(var(--cell) * 0.12);
+      padding-bottom: calc(var(--cell) * 0.16);
+    }
+    .next-item {
+      padding-top: calc(var(--cell) * 0.14);
+      border-top: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    .next-item-when {
+      font-size: calc(var(--cell) * 0.19);
+      opacity: 0.8;
+    }
+    .next-item-title {
+      margin-top: calc(var(--cell) * 0.03);
+      font-size: calc(var(--cell) * 0.25);
+      font-weight: 700;
+      line-height: 1.25;
+      overflow-wrap: anywhere;
+    }
+    .next-title {
+      margin-top: calc(var(--cell) * 0.1);
+      font-size: calc(var(--cell) * 0.34);
+      font-weight: 800;
+      line-height: 1.2;
+      overflow-wrap: anywhere;
+    }
+    .next-when {
+      font-size: calc(var(--cell) * 0.24);
+      font-weight: 500;
+      opacity: 0.95;
+    }
+    .next-relative {
+      align-self: flex-start;
+      padding: calc(var(--cell) * 0.05) calc(var(--cell) * 0.16);
+      border-radius: 999px;
+      background: rgba(52, 211, 107, 0.35);
+      border: 1px solid rgba(191, 245, 208, 0.7);
+      font-size: calc(var(--cell) * 0.2);
+      font-weight: 700;
+    }
+    .next-empty {
+      font-size: calc(var(--cell) * 0.24);
+      line-height: 1.35;
+      opacity: 0.85;
+    }
+    .next-hint {
+      flex-shrink: 0;
+      font-size: calc(var(--cell) * 0.17);
+      line-height: 1.35;
+      opacity: 0.7;
+    }
+
+    /* Feld zum Eintragen, öffnet sich unter dem angeklickten Tag */
+    .day-editor {
+      position: absolute;
+      width: 300px;
+      padding: 12px;
+      box-sizing: border-box;
+      display: none;
+      font-size: 13px;
+      cursor: default;
+      background: rgba(20, 20, 20, 0.55);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.35);
+      border-radius: 14px;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+      text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+      z-index: 5;
+    }
+    .day-editor.open {
+      display: block;
+    }
+    .editor-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+      font-size: 14px;
+      font-weight: 700;
+    }
+    .editor-close,
+    .editor-delete {
+      padding: 0 6px;
+      font: inherit;
+      font-size: 16px;
+      line-height: 1.2;
+      color: #ffffff;
+      background: none;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      opacity: 0.75;
+    }
+    .editor-close:hover,
+    .editor-delete:hover {
+      background: rgba(255, 255, 255, 0.18);
+      opacity: 1;
+    }
+    .editor-list {
+      margin: 0 0 10px;
+      padding: 0;
+      list-style: none;
+    }
+    .editor-list li {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+    }
+    .editor-list .time {
+      min-width: 42px;
+      font-variant-numeric: tabular-nums;
+      opacity: 0.85;
+    }
+    .editor-list .title {
+      flex: 1;
+      overflow-wrap: anywhere;
+    }
+    .editor-empty {
+      margin-bottom: 10px;
+      opacity: 0.7;
+    }
+    .editor-list li {
+      flex-wrap: wrap;
+    }
+    .editor-list .note {
+      flex-basis: 100%;
+      margin: 2px 0 2px 50px;
+      font-size: 12px;
+      line-height: 1.35;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      opacity: 0.85;
+    }
+    .editor-list .note::before {
+      content: '📝 ';
+    }
+    .note-editor {
+      flex-basis: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 6px;
+      margin: 4px 0 4px 50px;
+    }
+    .note-editor select {
+      align-self: stretch;
+      font: inherit;
+      font-size: 12px;
+      color: #ffffff;
+      background: rgba(255, 255, 255, 0.15);
+      border: 1px solid rgba(255, 255, 255, 0.4);
+      border-radius: 6px;
+      padding: 4px 6px;
+      color-scheme: dark;
+    }
+    .note-editor select option {
+      background: #2b2b2b;
+    }
+    .note-editor textarea,
+    .editor-form textarea {
+      box-sizing: border-box;
+      width: 100%;
+      font: inherit;
+      font-size: 12px;
+      color: #ffffff;
+      background: rgba(255, 255, 255, 0.15);
+      border: 1px solid rgba(255, 255, 255, 0.4);
+      border-radius: 6px;
+      padding: 5px 7px;
+      resize: vertical;
+    }
+    .note-editor textarea:focus,
+    .editor-form textarea:focus {
+      outline: none;
+      border-color: #ffffff;
+    }
+    .note-editor textarea::placeholder,
+    .editor-form textarea::placeholder {
+      color: rgba(255, 255, 255, 0.65);
+    }
+    .note-editor button {
+      font: inherit;
+      font-size: 12px;
+      color: #ffffff;
+      background: rgba(52, 211, 107, 0.35);
+      border: 1px solid #bff5d0;
+      border-radius: 6px;
+      padding: 4px 10px;
+      cursor: pointer;
+    }
+    .editor-note-label {
+      grid-column: 1 / -1;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 12px;
+    }
+    .editor-note-label span {
+      opacity: 0.8;
+    }
+    /* Kategorie-Farben */
+    .cat-dot {
+      display: inline-block;
+      width: 9px;
+      height: 9px;
+      margin-right: 6px;
+      border-radius: 50%;
+      vertical-align: middle;
+      box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.6);
+    }
+    .next-category {
+      align-self: flex-start;
+      padding: calc(var(--cell) * 0.03) calc(var(--cell) * 0.14);
+      font-size: calc(var(--cell) * 0.18);
+      font-weight: 700;
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--c) 45%, transparent);
+      border: 1px solid var(--c);
+    }
+    .next-item.has-category {
+      padding-left: calc(var(--cell) * 0.12);
+      border-left: 3px solid var(--c);
+    }
+    .day .events div {
+      padding-left: 2px;
+    }
+    .next-note {
+      font-size: calc(var(--cell) * 0.2);
+      line-height: 1.35;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      opacity: 0.85;
+    }
+    .editor-list .repeat {
+      display: block;
+      font-size: 11px;
+      opacity: 0.75;
+    }
+    .editor-row {
+      display: flex;
+      gap: 6px;
+    }
+    .editor-form input,
+    .editor-form select,
+    .editor-form button {
+      font: inherit;
+      color: #ffffff;
+      background: rgba(255, 255, 255, 0.15);
+      border: 1px solid rgba(255, 255, 255, 0.4);
+      border-radius: 6px;
+      padding: 5px 7px;
+      color-scheme: dark;
+    }
+    .editor-form input:focus,
+    .editor-form select:focus {
+      outline: none;
+      border-color: #ffffff;
+      background: rgba(255, 255, 255, 0.22);
+    }
+    .editor-form select option {
+      color: #ffffff;
+      background: #2b2b2b;
+    }
+    .editor-form select:disabled {
+      opacity: 0.5;
+    }
+    .editor-form input[type="time"] {
+      width: 84px;
+    }
+    /* Zahnrad: grün umrandet, sobald eine Wiederholung eingestellt ist */
+    .editor-form .editor-gear {
+      padding: 5px 8px;
+      font-weight: 400;
+    }
+    .editor-form .editor-gear.active {
+      background: rgba(52, 211, 107, 0.35);
+      border-color: #bff5d0;
+    }
+    .editor-form .editor-gear[aria-expanded="true"] {
+      border-color: #ffffff;
+    }
+    .editor-settings {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid rgba(255, 255, 255, 0.18);
+    }
+    .editor-settings[hidden] {
+      display: none;
+    }
+    .editor-settings label {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 12px;
+    }
+    .editor-settings label span {
+      opacity: 0.8;
+    }
+    .editor-hint {
+      grid-column: 1 / -1;
+      margin: 0;
+      font-size: 11px;
+      line-height: 1.35;
+      opacity: 0.7;
+    }
+    .editor-form input[type="text"] {
+      flex: 1;
+      min-width: 0;
+    }
+    .editor-form input::placeholder {
+      color: rgba(255, 255, 255, 0.65);
+    }
+    .editor-form button {
+      padding: 5px 10px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .editor-form button:hover {
+      background: rgba(255, 255, 255, 0.28);
+    }
+    .editor-status {
+      margin-top: 6px;
+      color: #ffd0d0;
+    }
+    .editor-status:empty {
+      display: none;
+    }
+
+    @media (max-width: 700px) {
+      body.calendar-open .calendar {
+        flex-direction: column;
+        --cell: min(48px, calc((100vw - 80px) / 8.5), calc((100vh - 300px) / 11));
+      }
+      body.calendar-open .cal-side {
+        width: auto;
+        height: calc(var(--cell) * 2.8 * var(--open));
+        margin-left: 0;
+        margin-top: calc(var(--gap) * 2 * var(--open));
+      }
+      body.calendar-open .cal-side-inner {
+        width: auto;
+        right: 0;
+      }
+    }
+
+    @media (max-width: 500px) {
+      :root {
+        --card-w: 340px;
+        --card-h: 140px;
+      }
+      .clock-time {
+        font-size: 58px;
+      }
+      .clock-date {
+        margin-top: 10px;
+        font-size: 16px;
+      }
+      .clock-next {
+        font-size: 13px;
+      }
+      .clock-next::before {
+        margin: 7px auto 6px;
+      }
+    }
+  </style>
+  <link rel="stylesheet" href="tracker.css">
+  <link rel="stylesheet" href="speicher.css">
+  <!-- Anmeldung mit Account-Code; Daten liegen pro Account im privaten GitHub-Repo -->
+  <script src="konto.js"></script>
+  <script src="speicher.js"></script>
+</head>
+<body>
+  <div class="save-badge" id="save-badge" hidden></div>
+  <header class="topbar">
+    <button class="home-button" type="button" id="home-button">Home</button>
+    <button class="home-button settings-button" type="button" id="settings-button" data-keep-calendar
+            aria-controls="settings-drawer" aria-expanded="false">⚙ Einstellungen</button>
+  </header>
+
+  <!-- Seitenfenster mit Einstellungen -->
+  <div class="drawer-backdrop" id="drawer-backdrop" data-keep-calendar></div>
+  <aside class="settings-drawer" id="settings-drawer" data-keep-calendar aria-label="Einstellungen" aria-hidden="true">
+    <div class="drawer-head">
+      <h2>Einstellungen</h2>
+      <button type="button" class="drawer-close" id="drawer-close" aria-label="Einstellungen schließen">×</button>
+    </div>
+
+    <section class="settings-section">
+      <h3>Account</h3>
+      <div class="account-row">
+        <span class="account-avatar" id="account-avatar" aria-hidden="true">👤</span>
+        <span class="account-info">
+          <strong>Angemeldet als <span id="account-name">…</span></strong>
+          <span class="account-status" id="account-status"></span>
+        </span>
+        <button type="button" class="account-logout" id="account-logout">Abmelden</button>
+      </div>
+      <p class="setting-note">Deine Termine, Gewohnheiten, Ideen und Einstellungen werden in deinem Account auf GitHub gespeichert – auf jedem Gerät dieselben.</p>
+    </section>
+
+    <section class="settings-section">
+      <h3>Sprachassistent Edith</h3>
+      <label class="setting-row">
+        <span class="setting-text">
+          <strong>Sprachassistent aktivieren</strong>
+          <small>Edith hört zu und trägt Termine für dich ein.</small>
+        </span>
+        <input type="checkbox" class="switch" data-setting="assistantEnabled">
+      </label>
+      <label class="setting-row sub-setting">
+        <span class="setting-text">
+          <strong>Auf „Edith“ hören</strong>
+          <small>Sag „Edith“ und dann deinen Wunsch. Ohne diese Option startest du Edith mit dem runden Knopf unten links.</small>
+        </span>
+        <input type="checkbox" class="switch" data-setting="assistantWakeWord">
+      </label>
+      <label class="setting-row sub-setting">
+        <span class="setting-text">
+          <strong>Antworten vorlesen</strong>
+          <small>Edith antwortet mit Sprache, nicht nur mit Text.</small>
+        </span>
+        <input type="checkbox" class="switch" data-setting="assistantSpeak">
+      </label>
+      <p class="setting-status" id="assistant-status"></p>
+      <p class="setting-note">
+        Die Spracherkennung macht der Browser (Chrome oder Edge) und nutzt dafür seinen Online-Dienst.
+        Beim ersten Einschalten fragt der Browser nach dem Mikrofon.
+      </p>
+    </section>
+
+    <section class="settings-section">
+      <h3>Motivation</h3>
+      <label class="setting-row">
+        <span class="setting-text">
+          <strong>„Ich brauche Motivation“-Button anzeigen</strong>
+          <small>Aus: Die Kachel unten neben den Gewohnheiten verschwindet komplett. Deine gespeicherten Videos bleiben erhalten.</small>
+        </span>
+        <input type="checkbox" class="switch" data-setting="motivationEnabled">
+      </label>
+    </section>
+
+    <section class="settings-section">
+      <h3>Kategorien</h3>
+      <p class="setting-note category-intro">
+        Termine einer Kategorie bekommen deren Farbe im Kalender. Klick auf den Farbkreis, um die Farbe zu ändern.
+      </p>
+      <div class="category-list" id="category-list"></div>
+      <button type="button" class="category-add" id="category-add">+ Kategorie hinzufügen</button>
+    </section>
+
+    <section class="settings-section">
+      <h3 id="arc-settings-title">❄ Winter Arc</h3>
+      <label class="setting-row">
+        <span class="setting-text">
+          <strong>Arc aktivieren</strong>
+          <small>Zeigt unter der Uhr einen Button mit deinem Tag-Zähler. Gestartet wird in der Arc-Ansicht.</small>
+        </span>
+        <input type="checkbox" class="switch" data-setting="winterArcEnabled">
+      </label>
+      <div class="setting-row">
+        <span class="setting-text">
+          <strong>Art</strong>
+          <small>Winter Arc (blau mit Schneeflocken) oder dein eigener Arc mit Name, Farbe und Emojis.</small>
+        </span>
+        <select class="setting-select" data-setting="arcTheme" aria-label="Art des Arc">
+          <option value="winter">❄ Winter Arc</option>
+          <option value="custom">✨ Eigener Arc</option>
+        </select>
+      </div>
+      <div class="arc-custom-settings" id="arc-custom-settings">
+        <label class="setting-row stacked">
+          <span class="setting-text">
+            <strong>Name</strong>
+            <small>So heißt dein Arc überall – z. B. „Arc“, „Summer Arc“ oder „Gym Arc“.</small>
+          </span>
+          <input type="text" class="setting-input" data-setting="arcName" maxlength="30" placeholder="Arc" aria-label="Name des Arc">
+        </label>
+        <div class="setting-row stacked">
+          <span class="setting-text">
+            <strong>Farbe</strong>
+            <small>Damit wird die Ansicht leicht eingefärbt – wie das Blau beim Winter Arc.</small>
+          </span>
+          <div class="arc-colors" id="arc-colors">
+            <label class="arc-color-custom" title="Eigene Farbe wählen">
+              <input type="color" data-setting="arcColor" aria-label="Eigene Farbe">
+            </label>
+          </div>
+        </div>
+        <label class="setting-row stacked">
+          <span class="setting-text">
+            <strong>Emojis</strong>
+            <small>Fallen statt Schneeflocken herunter. Das erste ist auch das Symbol. Unter Windows öffnet Win + . die Emoji-Auswahl.</small>
+          </span>
+          <input type="text" class="setting-input emoji-input" data-setting="arcEmojis" maxlength="60" placeholder="🔥 💪 ⭐" aria-label="Emojis">
+        </label>
+        <div class="arc-emoji-presets" id="arc-emoji-presets"></div>
+      </div>
+      <label class="setting-row">
+        <span class="setting-text">
+          <strong>Bei verpasstem Tag zurücksetzen</strong>
+          <small>Aus: Die Tage zählen ab dem Start immer weiter. An: Gezählt werden nur Tage am Stück, die du abgehakt hast.</small>
+        </span>
+        <input type="checkbox" class="switch" data-setting="winterArcReset">
+      </label>
+      <div class="setting-row">
+        <span class="setting-text">
+          <strong>Ziel</strong>
+          <small>Wie lange dein Arc gehen soll.</small>
+        </span>
+        <select class="setting-select" data-setting="winterArcGoal" aria-label="Ziel in Tagen">
+          <option value="30">30 Tage</option>
+          <option value="60">60 Tage</option>
+          <option value="75">75 Tage</option>
+          <option value="90">90 Tage</option>
+          <option value="100">100 Tage</option>
+          <option value="120">120 Tage</option>
+          <option value="custom">Benutzerdefiniert …</option>
+        </select>
+      </div>
+      <label class="setting-row" id="arc-goal-custom-row">
+        <span class="setting-text">
+          <strong>Eigenes Ziel</strong>
+          <small>Anzahl Tage (1 bis 1000).</small>
+        </span>
+        <span class="goal-input-wrap">
+          <input type="number" class="setting-input goal-input" data-setting="arcGoalCustom" min="1" max="1000" step="1" aria-label="Eigenes Ziel in Tagen">
+          Tage
+        </span>
+      </label>
+    </section>
+  </aside>
+
+  <!-- Sprachassistent Edith: Knopf unten links und Gesprächsfenster -->
+  <div class="edith" id="edith" data-keep-calendar hidden>
+    <div class="edith-panel" id="edith-panel" hidden>
+      <div class="edith-head">
+        <strong>Edith</strong>
+        <span class="edith-state" id="edith-state"></span>
+        <button type="button" class="edith-close" id="edith-close" aria-label="Gesprächsfenster schließen">×</button>
+      </div>
+      <div class="edith-log" id="edith-log" aria-live="polite"></div>
+      <div class="edith-interim" id="edith-interim"></div>
+      <form class="edith-form" id="edith-form" autocomplete="off">
+        <input type="text" id="edith-input" placeholder="Oder hier schreiben …" aria-label="Nachricht an Edith">
+        <button type="submit" aria-label="Senden">➤</button>
+      </form>
+    </div>
+    <button type="button" class="edith-orb" id="edith-orb" aria-label="Edith ansprechen" title="Edith ansprechen">
+      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+        <path fill="currentColor" d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z"/>
+      </svg>
+    </button>
+  </div>
+
+  <div class="clock-card glass">
+    <div class="clock-time" id="clock-time">--:--:--</div>
+    <div class="clock-date" id="clock-date"></div>
+    <div class="clock-next" id="clock-next"></div>
+  </div>
+
+  <!-- Winter Arc: Button unter der Uhr (nur wenn in den Einstellungen aktiviert) -->
+  <button type="button" class="winter-button glass" id="winter-button" data-keep-calendar hidden>
+    <span class="winter-button-icon">❄</span>
+    <span class="winter-button-text" id="winter-button-text">Winter Arc</span>
+  </button>
+
+  <div class="calendar glass" id="calendar" role="button" tabindex="0" aria-label="Kalender öffnen">
+    <div class="cal-main">
+      <div class="cal-today-row">
+        <button type="button" class="cal-today" id="cal-today" title="Zum heutigen Datum springen">Heute</button>
+      </div>
+      <div class="cal-title">
+        <button type="button" class="cal-nav" data-step="-1" aria-label="Vorheriger Monat">‹</button>
+        <span id="cal-title-text"></span>
+        <button type="button" class="cal-nav" data-step="1" aria-label="Nächster Monat">›</button>
+      </div>
+      <div class="cal-weekdays">
+        <span>Mo</span><span>Di</span><span>Mi</span><span>Do</span><span>Fr</span>
+        <span class="weekend">Sa</span><span class="weekend">So</span>
+      </div>
+      <div class="cal-days" id="cal-days"></div>
+    </div>
+
+    <aside class="cal-side">
+      <div class="cal-side-inner">
+        <div class="next-label">Nächste Termine</div>
+        <div id="next-event"></div>
+        <div class="next-hint">Klicke auf einen Tag, um etwas einzutragen.</div>
+      </div>
+    </aside>
+
+    <div class="day-editor" id="day-editor" role="dialog" aria-label="Termine des Tages">
+      <div class="editor-head">
+        <span id="editor-title"></span>
+        <button type="button" class="editor-close" id="editor-close" aria-label="Schließen">×</button>
+      </div>
+      <ul class="editor-list" id="editor-list"></ul>
+      <form class="editor-form" id="editor-form" autocomplete="off">
+        <div class="editor-row">
+          <input type="time" id="editor-time" aria-label="Uhrzeit (optional)">
+          <input type="text" id="editor-text" placeholder="Neuer Termin" maxlength="120" aria-label="Termin">
+          <button type="button" class="editor-gear" id="editor-settings-button" title="Einstellungen: Wiederholung"
+                  aria-label="Einstellungen" aria-controls="editor-settings" aria-expanded="false">⚙</button>
+          <button type="submit" title="Termin hinzufügen" aria-label="Termin hinzufügen">+</button>
+        </div>
+        <div class="editor-settings" id="editor-settings" hidden>
+          <label>
+            <span>Bis (mehrtägig)</span>
+            <input type="date" id="editor-end" aria-label="Enddatum für mehrtägige Termine">
+          </label>
+          <label>
+            <span>Kategorie</span>
+            <select id="editor-category">
+              <option value="">Keine</option>
+            </select>
+          </label>
+          <label>
+            <span>Wiederholen</span>
+            <select id="editor-repeat">
+              <option value="none">Nie</option>
+              <option value="daily">Jeden Tag</option>
+              <option value="weekly">Jede Woche</option>
+              <option value="yearly">Jedes Jahr</option>
+            </select>
+          </label>
+          <label>
+            <span>Wie oft</span>
+            <select id="editor-count" disabled>
+              <option value="0">Immer</option>
+              <option value="1">Nur einmal</option>
+            </select>
+          </label>
+          <p class="editor-hint">„Nur einmal“: Der Termin kommt genau ein weiteres Mal, also nach einem Tag, einer Woche oder einem Jahr.</p>
+          <label class="editor-note-label">
+            <span>Kommentar (optional)</span>
+            <textarea id="editor-note" rows="2" maxlength="500" placeholder="z. B. Versicherungskarte mitbringen"></textarea>
+          </label>
+        </div>
+      </form>
+      <div class="editor-status" id="editor-status"></div>
+    </div>
+  </div>
+
+  <!-- Mini-Kästchen unten in der Mitte: Ideen (links) und Gewohnheiten (rechts) -->
+  <!-- data-keep-calendar: der öffnende Klick zählt nicht als "Klick daneben" -->
+  <div class="mini-widget glass" id="ideas-mini" role="button" tabindex="0" aria-label="Ideen öffnen" data-keep-calendar>
+    <div class="mini-head"><span class="mini-icon">💡</span><span class="mini-title">Ideen</span></div>
+    <div class="mini-big" id="ideas-count">0</div>
+    <div class="mini-sub" id="ideas-sub">Ideen</div>
+    <div class="mini-preview" id="ideas-preview"></div>
+  </div>
+  <div class="mini-widget glass" id="habits-mini" role="button" tabindex="0" aria-label="Gewohnheiten öffnen" data-keep-calendar>
+    <div class="mini-head"><span class="mini-icon">✓</span><span class="mini-title">Gewohnheiten</span></div>
+    <div class="mini-big" id="habits-count">0/0</div>
+    <div class="mini-bar"><span id="habits-bar"></span></div>
+    <div class="mini-preview" id="habits-preview"></div>
+  </div>
+
+  <!-- Kachel neben den Gewohnheiten: ein Klick zeigt ein Motivationsvideo -->
+  <button type="button" class="motivation-tile glass" id="motivation-tile" aria-label="Ich brauche Motivation – Motivationsvideo zeigen">
+    <span class="motivation-icon">🔥</span>
+    <span class="motivation-text">Ich brauche Motivation</span>
+  </button>
+
+  <!-- Overlay mit dem Instagram-Video -->
+  <div class="motivation-overlay" id="motivation-overlay" data-keep-calendar hidden>
+    <div class="motivation-dialog glass" role="dialog" aria-modal="true" aria-label="Motivationsvideo">
+      <div class="mo-head">
+        <strong>🔥 Motivation</strong>
+        <div class="mo-actions">
+          <button type="button" class="tv-button" id="mo-next">↻ Anderes Video</button>
+          <a class="tv-button" id="mo-open" href="https://www.instagram.com/" target="_blank" rel="noopener">In Instagram öffnen</a>
+          <button type="button" class="tv-icon-button mo-close" id="mo-close" aria-label="Schließen">×</button>
+        </div>
+      </div>
+      <div class="mo-stage" id="mo-stage"></div>
+      <div class="mo-source" id="mo-source"></div>
+      <details class="mo-manage" id="mo-manage">
+        <summary id="mo-summary">Videos verwalten (0)</summary>
+
+        <!-- Standard: gespeicherte Instagram-Links -->
+        <div id="mo-links-section">
+          <form class="mo-add" id="mo-link-form" autocomplete="off">
+            <input type="url" class="tv-input" id="mo-link-input" placeholder="Link von Instagram, TikTok oder YouTube Shorts einfügen" aria-label="Video-Link">
+            <button type="button" class="tv-button" id="mo-paste" title="Link aus der Zwischenablage einfügen">📋</button>
+            <button type="submit" class="tv-button primary">+ Hinzufügen</button>
+          </form>
+          <ul class="mo-list" id="mo-video-list"></ul>
+          <p class="mo-note">In Instagram, TikTok oder YouTube bei einem Video auf „Teilen“ → „Link kopieren“ tippen und hier einfügen. „Ich brauche Motivation“ zeigt dann zufällig eins deiner gespeicherten Videos – egal von welcher Plattform.</p>
+        </div>
+
+        <!-- Optional (Einstellung "Videos live von Instagram-Accounts holen"): ausgewählte Accounts -->
+        <div id="mo-accounts-section" hidden>
+          <form class="mo-add" id="mo-add-form" autocomplete="off">
+            <input type="text" class="tv-input" id="mo-add-input" placeholder="@account oder Profil-Link, z. B. @motivationpage" aria-label="Instagram-Account">
+            <button type="submit" class="tv-button primary">+ Hinzufügen</button>
+          </form>
+          <label class="mo-filter">
+            <input type="checkbox" id="mo-filter">
+            <span>Nur Videos mit Motivations-Bezug (Beschreibung und Hashtags)</span>
+          </label>
+          <ul class="mo-list" id="mo-list"></ul>
+          <p class="mo-note">Videos werden nur live abgerufen, wenn du auf „Ich brauche Motivation“ drückst, und nicht gespeichert. Gespeichert werden nur diese Accounts.</p>
+        </div>
+
+        <div class="mo-status" id="mo-status"></div>
+      </details>
+    </div>
+  </div>
+
+  <!-- Große Ansicht: Ideen & Projekte mit Ordnern -->
+  <section class="tracker-view glass" id="ideas-view" data-view-panel="ideas" aria-label="Ideen und Projekte">
+    <div class="tv-head">
+      <h2>💡 Ideen &amp; Projekte</h2>
+      <div class="tv-actions">
+        <button type="button" class="tv-button" id="folder-add">+ Ordner</button>
+        <button type="button" class="tv-button primary" id="idea-add">+ Idee</button>
+      </div>
+    </div>
+    <div class="ideas-body">
+      <nav class="tv-panel folder-tree" id="folder-tree" aria-label="Ordner"></nav>
+      <div class="tv-panel idea-list" id="idea-list"></div>
+    </div>
+  </section>
+
+  <!-- Große Ansicht: Gewohnheiten -->
+  <section class="tracker-view glass" id="habits-view" data-view-panel="habits" aria-label="Gewohnheiten">
+    <div class="tv-head">
+      <h2>✓ Gewohnheiten</h2>
+      <div class="habit-month" id="habit-month"></div>
+      <div class="tv-actions">
+        <button type="button" class="tv-button" id="habit-prev" aria-label="Einen Monat zurück">‹</button>
+        <button type="button" class="tv-button" id="habit-today">Heute</button>
+        <button type="button" class="tv-button" id="habit-next" aria-label="Einen Monat vor">›</button>
+        <button type="button" class="tv-button weight-open" id="weight-open" title="Gewichtsverlauf">📈 Gewicht</button>
+      </div>
+    </div>
+    <!-- Kennzahlen: Heute, beste Serie, Woche, Winter Arc -->
+    <div class="habit-stats" id="habit-stats"></div>
+    <div class="habit-editor" id="habit-editor" hidden></div>
+    <div class="tv-panel habit-table-wrap" id="habit-table-wrap">
+      <!-- Kopf (Namen, Serie, Monat) steht fest und ist durchsichtig, nur die Tage darunter scrollen -->
+      <div class="habit-grid-head" id="habit-grid-head">
+        <table class="habit-grid" id="habit-table-head"></table>
+      </div>
+      <div class="habit-grid-body" id="habit-grid-body">
+        <table class="habit-grid" id="habit-table"></table>
+      </div>
+    </div>
+    <form class="habit-add" id="habit-add-form" autocomplete="off">
+      <input type="text" class="tv-input" id="habit-add-input" maxlength="60" placeholder="Neue Gewohnheit, z. B. 💧 2 Liter Wasser trinken" aria-label="Neue Gewohnheit">
+      <button type="submit" class="tv-button primary">+ Hinzufügen</button>
+    </form>
+
+    <!-- Gewicht: Liniendiagramm + Einträge (liegt über der Gewohnheiten-Ansicht) -->
+    <div class="weight-panel" id="weight-panel" hidden>
+      <div class="tv-head">
+        <button type="button" class="tv-button" id="weight-back">← Gewohnheiten</button>
+        <h2>📈 Gewicht</h2>
+        <form class="weight-form" id="weight-form" autocomplete="off">
+          <input type="date" class="tv-input" id="weight-date" aria-label="Datum">
+          <input type="number" class="tv-input" id="weight-kg" min="20" max="400" step="0.1" placeholder="kg" aria-label="Gewicht in Kilogramm">
+          <button type="submit" class="tv-button primary">Eintragen</button>
+        </form>
+      </div>
+      <div class="weight-stats" id="weight-stats"></div>
+      <div class="weight-body">
+        <div class="tv-panel weight-chart" id="weight-chart"></div>
+        <div class="tv-panel weight-list" id="weight-list"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Große Ansicht: Winter Arc -->
+  <section class="tracker-view glass winter-view" id="winter-view" data-view-panel="winter" aria-label="Winter Arc">
+    <div class="snow" id="winter-snow" aria-hidden="true"></div>
+    <div class="tv-head">
+      <h2 id="winter-title">❄ Winter Arc</h2>
+      <div class="winter-quote" id="winter-quote"></div>
+      <div class="tv-actions">
+        <button type="button" class="tv-button" id="winter-settings">⚙ Einstellungen</button>
+      </div>
+    </div>
+    <div class="winter-body" id="winter-body"></div>
+    <div class="winter-footer" id="winter-footer"></div>
+  </section>
+
+  <script>
+    // Uhrzeit und Datum immer in deutscher Zeit (inkl. Sommer-/Winterzeit)
+    const timeFormat = new Intl.DateTimeFormat('de-DE', {
+      timeZone: 'Europe/Berlin',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    });
+    const dateFormat = new Intl.DateTimeFormat('de-DE', {
+      timeZone: 'Europe/Berlin',
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric'
+    });
+    const monthFormat = new Intl.DateTimeFormat('de-DE', {
+      timeZone: 'Europe/Berlin',
+      month: 'long',
+      year: 'numeric'
+    });
+    const partsFormat = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Europe/Berlin',
+      year: 'numeric',
+      month: 'numeric',
+      day: 'numeric'
+    });
+    const clockPartsFormat = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Europe/Berlin',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23'
+    });
+    // Datumsangaben für Termine ('YYYY-MM-DD' wird als UTC-Datum ohne Uhrzeit gelesen)
+    const editorDateFormat = new Intl.DateTimeFormat('de-DE', {
+      timeZone: 'UTC',
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long'
+    });
+    const shortDateFormat = new Intl.DateTimeFormat('de-DE', {
+      timeZone: 'UTC',
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short'
+    });
+    const nextDateFormat = new Intl.DateTimeFormat('de-DE', {
+      timeZone: 'UTC',
+      weekday: 'short',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric'
+    });
+    let renderedDay = '';
+    let renderedMinute = '';
+
+    // Jahr, Monat und Tag in deutscher Zeit
+    function berlinDate(now) {
+      const parts = Object.fromEntries(partsFormat.formatToParts(now).map(p => [p.type, p.value]));
+      return { year: Number(parts.year), month: Number(parts.month), day: Number(parts.day) };
+    }
+
+    function isoDate(year, month, day) {
+      return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    }
+
+    // Heutiges Datum ('YYYY-MM-DD') und Uhrzeit ('HH:MM') in deutscher Zeit
+    function berlinStamp(now) {
+      const { year, month, day } = berlinDate(now);
+      const parts = Object.fromEntries(clockPartsFormat.formatToParts(now).map(p => [p.type, p.value]));
+      return { date: isoDate(year, month, day), time: `${parts.hour}:${parts.minute}` };
+    }
+
+    function dateFromIso(iso) {
+      const [year, month, day] = iso.split('-').map(Number);
+      return new Date(Date.UTC(year, month - 1, day));
+    }
+
+    function addDays(iso, count) {
+      const date = dateFromIso(iso);
+      date.setUTCDate(date.getUTCDate() + count);
+      return date.toISOString().slice(0, 10);
+    }
+
+    function daysBetween(fromIso, toIso) {
+      return Math.round((dateFromIso(toIso) - dateFromIso(fromIso)) / 86400000);
+    }
+
+    // Angezeigter Monat im Kalender (null = aktueller Monat)
+    let viewYear = null;
+    let viewMonth = null;
+
+    // Baut den Kalender für den angezeigten Monat neu auf; "heute" in deutscher Zeit
+    function renderCalendar(now = new Date()) {
+      const today = berlinDate(now);
+      if (viewYear === null) {
+        viewYear = today.year;
+        viewMonth = today.month;
+      }
+      const year = viewYear;
+      const month = viewMonth;
+      const todayIso = isoDate(today.year, today.month, today.day);
+
+      const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+      const offset = (new Date(Date.UTC(year, month - 1, 1)).getUTCDay() + 6) % 7; // Montag = 0
+
+      document.getElementById('cal-title-text').textContent = monthFormat.format(new Date(Date.UTC(year, month - 1, 1, 12)));
+      // "Heute"-Knopf blasser, wenn schon der aktuelle Monat angezeigt wird
+      document.getElementById('cal-today').classList.toggle('is-current', year === today.year && month === today.month);
+
+      closeEditor();
+      const days = document.getElementById('cal-days');
+      days.replaceChildren();
+      for (let i = 0; i < offset; i++) {
+        days.appendChild(document.createElement('div'));
+      }
+      for (let day = 1; day <= daysInMonth; day++) {
+        const cell = document.createElement('div');
+        cell.dataset.date = isoDate(year, month, day);
+        cell.className = cell.dataset.date === todayIso ? 'day today' : 'day';
+
+        const label = document.createElement('span');
+        label.className = 'num';
+        label.textContent = day;
+        const eventList = document.createElement('div');
+        eventList.className = 'events';
+        const dot = document.createElement('span');
+        dot.className = 'dot';
+
+        cell.append(label, eventList, dot);
+        days.appendChild(cell);
+      }
+      renderDayEvents();
+    }
+
+    function shiftMonth(step) {
+      viewMonth += step;
+      if (viewMonth < 1) { viewMonth = 12; viewYear--; }
+      if (viewMonth > 12) { viewMonth = 1; viewYear++; }
+      renderCalendar();
+    }
+
+    function resetMonth() {
+      viewYear = null;
+      renderCalendar();
+    }
+
+    // ---------- Termine ----------
+    // Ein Termin: { id, date: 'YYYY-MM-DD', time: 'HH:MM' oder '' (ganztägig), title,
+    //               repeat: 'daily' | 'weekly' | 'yearly' (optional), repeatCount: 1 = nur einmal wiederholen }
+    let events = [];
+    let selectedDate = null;
+
+    const calendar = document.getElementById('calendar');
+    const editor = document.getElementById('day-editor');
+    const editorForm = document.getElementById('editor-form');
+    const editorTime = document.getElementById('editor-time');
+    const editorText = document.getElementById('editor-text');
+    const editorStatus = document.getElementById('editor-status');
+    const editorSettingsButton = document.getElementById('editor-settings-button');
+    const editorSettings = document.getElementById('editor-settings');
+    const editorRepeat = document.getElementById('editor-repeat');
+    const editorCount = document.getElementById('editor-count');
+    const editorNote = document.getElementById('editor-note');
+    const editorEnd = document.getElementById('editor-end');
+    const editorCategory = document.getElementById('editor-category');
+    let editingNoteId = null; // Termin, dessen Kommentar gerade bearbeitet wird
+
+    const REPEAT_LABELS = { daily: 'jeden Tag', weekly: 'jede Woche', yearly: 'jedes Jahr' };
+
+    // ---------- Kategorien ----------
+    // 10 Farben zur Auswahl; die Kategorien selbst stehen in den Einstellungen (settings.categories)
+    const CATEGORY_COLORS = [
+      { name: 'Gelb', value: '#f5c542' },
+      { name: 'Orange', value: '#f59342' },
+      { name: 'Rot', value: '#ef5350' },
+      { name: 'Pink', value: '#ec6fb0' },
+      { name: 'Lila', value: '#a970ff' },
+      { name: 'Blau', value: '#4f8ff7' },
+      { name: 'Türkis', value: '#29c4c4' },
+      { name: 'Grün', value: '#43c96b' },
+      { name: 'Braun', value: '#a7754b' },
+      { name: 'Grau', value: '#9aa5b1' }
+    ];
+    const DEFAULT_DOT_COLOR = '#ffd166';
+
+    function categoryOf(event) {
+      return (settings.categories || []).find(category => category.id === event.category) || null;
+    }
+
+    function categoryColor(event) {
+      const category = categoryOf(event);
+      return category ? category.color : null;
+    }
+
+    // Mehrtägig: "16.–19.10." bzw. "28.12.–03.01."
+    function rangeShort(event) {
+      const [, startMonth, startDay] = event.date.split('-');
+      const [, endMonth, endDay] = event.endDate.split('-');
+      return `${Number(startDay)}.${startMonth !== endMonth ? Number(startMonth) + '.' : ''}–${Number(endDay)}.${Number(endMonth)}.`;
+    }
+
+    // Die wievielte Wiederholung an diesem Datum stattfindet (0 = Original), -1 = gar nicht
+    function repetitionIndex(event, date) {
+      // Mehrtägige Termine (von–bis) wiederholen sich nicht, sie gelten an jedem Tag dazwischen
+      if (event.endDate) return date >= event.date && date <= event.endDate ? 0 : -1;
+      if (date === event.date) return 0;
+      if (date < event.date || !event.repeat) return -1;
+      const days = daysBetween(event.date, date);
+      let index = -1;
+      if (event.repeat === 'daily') {
+        index = days;
+      } else if (event.repeat === 'weekly' && days % 7 === 0) {
+        index = days / 7;
+      } else if (event.repeat === 'yearly' && date.slice(5) === event.date.slice(5)) {
+        index = Number(date.slice(0, 4)) - Number(event.date.slice(0, 4));
+      }
+      if (index > 0 && event.repeatCount && index > event.repeatCount) return -1;
+      return index;
+    }
+
+    function occursOn(event, date) {
+      return repetitionIndex(event, date) >= 0;
+    }
+
+    // Erstes Datum ab "from", an dem der Termin stattfindet (oder null)
+    function nextOccurrence(event, from) {
+      if (event.endDate) {
+        // läuft gerade → heute; liegt in der Zukunft → Starttag; vorbei → null
+        if (from > event.endDate) return null;
+        return from < event.date ? event.date : from;
+      }
+      if (from <= event.date) return event.date;
+      let candidate = null;
+      if (event.repeat === 'daily') {
+        candidate = from;
+      } else if (event.repeat === 'weekly') {
+        candidate = addDays(event.date, Math.ceil(daysBetween(event.date, from) / 7) * 7);
+      } else if (event.repeat === 'yearly') {
+        const monthDay = event.date.slice(5);
+        for (let year = Number(from.slice(0, 4)); year <= Number(from.slice(0, 4)) + 8; year++) {
+          const iso = `${year}-${monthDay}`;
+          const valid = dateFromIso(iso).toISOString().slice(0, 10) === iso; // 29. Februar nur in Schaltjahren
+          if (valid && iso >= from) { candidate = iso; break; }
+        }
+      }
+      return candidate && occursOn(event, candidate) ? candidate : null;
+    }
+
+    // Anstehende Termine ab jetzt, sortiert: [{ event, date }], jeder Termin (auch Serien) nur einmal
+    function upcomingEvents(now = new Date(), limit = Infinity) {
+      const { date: today, time: nowTime } = berlinStamp(now);
+      const list = [];
+      for (const event of events) {
+        let date = nextOccurrence(event, today);
+        if (date === today && event.time && event.time < nowTime) {
+          date = nextOccurrence(event, addDays(today, 1));
+        }
+        if (date) list.push({ event, date, key: date + (event.time || '') });
+      }
+      return list.sort((a, b) => a.key.localeCompare(b.key)).slice(0, limit);
+    }
+
+    function nextUpcoming(now = new Date()) {
+      return upcomingEvents(now, 1)[0] || null;
+    }
+
+    function repeatText(event) {
+      if (!event.repeat) return '';
+      return `↻ ${REPEAT_LABELS[event.repeat]}${event.repeatCount === 1 ? ' (nur einmal)' : ''}`;
+    }
+
+    // Ganztägige Termine zuerst, dann nach Uhrzeit
+    function eventsOn(date) {
+      return events
+        .filter(event => occursOn(event, date))
+        .sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+    }
+
+    function eventLabel(event) {
+      let label = event.time ? `${event.time} ${event.title}` : event.title;
+      if (event.endDate) label += ` (${rangeShort(event)})`;
+      return event.note ? `${label} 📝` : label;
+    }
+
+    // "Fr., 16. Okt. – Mo., 19. Okt." / "läuft bis Mo., 19. Okt."
+    function rangeText(event, today) {
+      const end = shortDateFormat.format(dateFromIso(event.endDate));
+      if (today && today >= event.date) return `läuft bis ${end}`;
+      return `${shortDateFormat.format(dateFromIso(event.date))} – ${end}`;
+    }
+
+    async function loadEvents() {
+      try {
+        const response = await fetch('/api/termine', { cache: 'no-store' });
+        const data = await response.json();
+        events = Array.isArray(data) ? data : [];
+      } catch (error) {
+        events = [];
+      }
+      refreshEventViews();
+    }
+
+    async function saveEvents() {
+      try {
+        const response = await fetch('/api/termine', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(events)
+        });
+        if (!response.ok) throw new Error(response.status);
+        editorStatus.textContent = '';
+      } catch (error) {
+        editorStatus.textContent = 'Speichern fehlgeschlagen. Seite neu laden und nochmal versuchen.';
+      }
+    }
+
+    // Termine in den Tages-Kästchen (sichtbar beim Hovern), farbiger Punkt für "hat Termine"
+    // und ein farbiger Balken unter mehrtägigen Terminen
+    function renderDayEvents() {
+      for (const cell of document.querySelectorAll('#cal-days .day')) {
+        const date = cell.dataset.date;
+        const list = eventsOn(date);
+        const box = cell.querySelector('.events');
+        box.replaceChildren(...list.map(event => {
+          const line = document.createElement('div');
+          line.textContent = eventLabel(event);
+          const color = categoryColor(event);
+          if (color) line.style.borderLeft = `3px solid ${color}`;
+          return line;
+        }));
+        cell.classList.toggle('has-events', list.length > 0);
+        const colored = list.find(event => categoryColor(event));
+        cell.style.setProperty('--dot-color', colored ? categoryColor(colored) : DEFAULT_DOT_COLOR);
+
+        const range = list.find(event => event.endDate);
+        cell.classList.toggle('in-range', Boolean(range));
+        cell.classList.toggle('range-start', Boolean(range) && range.date === date);
+        cell.classList.toggle('range-end', Boolean(range) && range.endDate === date);
+        if (range) cell.style.setProperty('--range-color', categoryColor(range) || DEFAULT_DOT_COLOR);
+      }
+    }
+
+    function relativeDayText(daysAway, date) {
+      return daysAway === 0 ? 'Heute' : daysAway === 1 ? 'Morgen' : shortDateFormat.format(dateFromIso(date));
+    }
+
+    // Nächste Termine: rechte Spalte im großen Kalender (Liste) und Zeile unter dem Datum auf der Startseite
+    function renderNextEvent(now = new Date()) {
+      const upcoming = upcomingEvents(now, 6);
+      const next = upcoming[0];
+      const box = document.getElementById('next-event');
+      const clockNext = document.getElementById('clock-next');
+
+      if (!next) {
+        const empty = document.createElement('div');
+        empty.className = 'next-empty';
+        empty.textContent = 'Keine anstehenden Termine.';
+        box.replaceChildren(empty);
+        clockNext.classList.add('empty');
+        clockNext.textContent = 'Keine anstehenden Termine';
+        return;
+      }
+
+      const { event, date } = next;
+      const today = berlinStamp(now).date;
+      const daysAway = daysBetween(today, date);
+      const timeText = event.time ? `${event.time} Uhr` : 'ganztägig';
+      const ongoing = Boolean(event.endDate) && today >= event.date;
+
+      const title = document.createElement('div');
+      title.className = 'next-title';
+      title.textContent = event.title;
+
+      const when = document.createElement('div');
+      when.className = 'next-when';
+      when.textContent = event.endDate
+        ? `${nextDateFormat.format(dateFromIso(event.date))} bis ${nextDateFormat.format(dateFromIso(event.endDate))}`
+        : `${nextDateFormat.format(dateFromIso(date))}, ${timeText}`;
+
+      const relative = document.createElement('div');
+      relative.className = 'next-relative';
+      relative.textContent = ongoing ? 'Läuft gerade'
+        : daysAway === 0 ? 'Heute' : daysAway === 1 ? 'Morgen' : `In ${daysAway} Tagen`;
+
+      // Erster Termin groß, die weiteren kompakt darunter
+      const first = document.createElement('div');
+      first.className = 'next-first';
+      first.append(title, when, relative);
+      const category = categoryOf(event);
+      if (category) {
+        const badge = document.createElement('div');
+        badge.className = 'next-category';
+        badge.style.setProperty('--c', category.color);
+        badge.textContent = category.name;
+        first.insertBefore(badge, when);
+      }
+      if (event.repeat) {
+        const repeat = document.createElement('div');
+        repeat.className = 'next-when';
+        repeat.textContent = repeatText(event);
+        first.appendChild(repeat);
+      }
+      if (event.note) {
+        const note = document.createElement('div');
+        note.className = 'next-note';
+        note.textContent = `📝 ${event.note}`;
+        first.appendChild(note);
+      }
+      box.replaceChildren(first);
+
+      for (const item of upcoming.slice(1)) {
+        const row = document.createElement('div');
+        row.className = 'next-item';
+        const rowWhen = document.createElement('div');
+        rowWhen.className = 'next-item-when';
+        rowWhen.textContent = item.event.endDate
+          ? rangeText(item.event, today)
+          : `${relativeDayText(daysBetween(today, item.date), item.date)} · ${item.event.time ? item.event.time + ' Uhr' : 'ganztägig'}`;
+        const rowTitle = document.createElement('div');
+        rowTitle.className = 'next-item-title';
+        rowTitle.textContent = item.event.repeat ? `${item.event.title} ↻` : item.event.title;
+        const rowColor = categoryColor(item.event);
+        if (rowColor) {
+          row.classList.add('has-category');
+          row.style.setProperty('--c', rowColor);
+        }
+        row.append(rowWhen, rowTitle);
+        box.appendChild(row);
+      }
+
+      // Startseite: "Nächster Termin: Zahnarzt · Morgen, 10:30 Uhr" bzw. "… · Urlaub · läuft bis Mo., 19. Okt."
+      const whenText = event.endDate ? rangeText(event, today) : `${relativeDayText(daysAway, date)}, ${timeText}`;
+      const label = document.createElement('span');
+      label.className = 'label';
+      label.textContent = 'Nächster Termin: ';
+      const titleText = document.createElement('strong');
+      titleText.textContent = event.title;
+      clockNext.classList.remove('empty');
+      clockNext.replaceChildren(label, titleText, ` · ${whenText}`);
+      clockNext.title = `${event.title} – ${whenText}`;
+    }
+
+    function refreshEventViews() {
+      renderDayEvents();
+      renderNextEvent();
+      if (selectedDate) renderEditor();
+    }
+
+    // ---------- Eintragen unter einem Tag ----------
+    function selectedCell() {
+      return selectedDate ? calendar.querySelector(`.day[data-date="${selectedDate}"]`) : null;
+    }
+
+    function renderEditor() {
+      document.getElementById('editor-title').textContent = editorDateFormat.format(dateFromIso(selectedDate));
+
+      const list = document.getElementById('editor-list');
+      const dayEvents = eventsOn(selectedDate);
+      list.replaceChildren(...dayEvents.map(event => {
+        const item = document.createElement('li');
+        const time = document.createElement('span');
+        time.className = 'time';
+        time.textContent = event.endDate ? rangeShort(event) : event.time || 'ganzt.';
+        const title = document.createElement('span');
+        title.className = 'title';
+        title.textContent = event.title;
+        const category = categoryOf(event);
+        if (category) {
+          const dot = document.createElement('span');
+          dot.className = 'cat-dot';
+          dot.style.background = category.color;
+          dot.title = category.name;
+          title.prepend(dot);
+        }
+        if (event.repeat) {
+          const repeat = document.createElement('span');
+          repeat.className = 'repeat';
+          repeat.textContent = repeatText(event);
+          title.appendChild(repeat);
+        }
+        const edit = document.createElement('button');
+        edit.type = 'button';
+        edit.className = 'editor-delete';
+        edit.textContent = '✎';
+        edit.title = 'Kategorie und Kommentar bearbeiten';
+        edit.setAttribute('aria-label', `Kategorie und Kommentar zu „${event.title}“ bearbeiten`);
+        edit.addEventListener('click', () => {
+          editingNoteId = editingNoteId === event.id ? null : event.id;
+          renderEditor();
+        });
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'editor-delete';
+        remove.textContent = '×';
+        remove.title = event.repeat ? 'Löschen (mit allen Wiederholungen)' : 'Löschen';
+        remove.setAttribute('aria-label', `„${event.title}“ löschen`);
+        remove.addEventListener('click', () => deleteEvent(event.id));
+        item.append(time, title, edit, remove);
+
+        // Kommentar: anzeigen oder (nach Klick auf ✎) bearbeiten
+        if (editingNoteId === event.id) {
+          const noteEditor = document.createElement('div');
+          noteEditor.className = 'note-editor';
+          const textarea = document.createElement('textarea');
+          textarea.rows = 3;
+          textarea.maxLength = 500;
+          textarea.placeholder = 'Kommentar, z. B. Versicherungskarte mitbringen';
+          textarea.value = event.note || '';
+          const categorySelect = document.createElement('select');
+          categorySelect.setAttribute('aria-label', 'Kategorie');
+          categorySelect.append(new Option('Keine Kategorie', ''), ...(settings.categories || []).map(item => new Option(item.name, item.id)));
+          categorySelect.value = categoryOf(event) ? event.category : '';
+          const save = document.createElement('button');
+          save.type = 'button';
+          save.textContent = 'Speichern';
+          save.addEventListener('click', () => {
+            editingNoteId = null;
+            if (categorySelect.value) {
+              event.category = categorySelect.value;
+            } else {
+              delete event.category;
+            }
+            updateEventNote(event.id, textarea.value);
+          });
+          noteEditor.append(categorySelect, textarea, save);
+          item.appendChild(noteEditor);
+          setTimeout(() => textarea.focus(), 0);
+        } else if (event.note) {
+          const note = document.createElement('div');
+          note.className = 'note';
+          note.textContent = event.note;
+          item.appendChild(note);
+        }
+        return item;
+      }));
+
+      if (dayEvents.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'editor-empty';
+        empty.textContent = 'Noch keine Termine.';
+        list.replaceChildren(empty);
+      }
+      positionEditor();
+    }
+
+    // Unter dem Tag anzeigen; wenn unten kein Platz ist, darüber
+    function positionEditor() {
+      const cell = selectedCell();
+      if (!cell) return;
+      const calRect = calendar.getBoundingClientRect();
+      const cellRect = cell.getBoundingClientRect();
+      const width = editor.offsetWidth;
+      const height = editor.offsetHeight;
+
+      let left = cellRect.left + cellRect.width / 2 - width / 2 - calRect.left;
+      left = Math.max(8, Math.min(left, calRect.width - width - 8));
+      let top = cellRect.bottom - calRect.top + 6;
+      if (cellRect.bottom + 6 + height > window.innerHeight - 8) {
+        top = cellRect.top - calRect.top - height - 6;
+      }
+      editor.style.left = `${left}px`;
+      editor.style.top = `${top}px`;
+    }
+
+    function openEditor(cell) {
+      selectedCell()?.classList.remove('selected');
+      selectedDate = cell.dataset.date;
+      cell.classList.add('selected');
+      editorStatus.textContent = '';
+      editorEnd.min = addDays(selectedDate, 1);
+      renderCategoryOptions();
+      editor.classList.add('open');
+      renderEditor();
+      editorText.focus();
+    }
+
+    function closeEditor() {
+      selectedCell()?.classList.remove('selected');
+      selectedDate = null;
+      editingNoteId = null;
+      editor.classList.remove('open');
+      resetEditorForm();
+    }
+
+    // Formular leeren und Wiederholung zurück auf "Nie"
+    function resetEditorForm() {
+      editorForm.reset();
+      editorSettings.hidden = true;
+      updateRepeatControls();
+    }
+
+    // Zahnrad grün, sobald etwas eingestellt ist (Wiederholung, Zeitraum, Kategorie oder Kommentar).
+    // Ein Zeitraum (Bis-Datum) schließt eine Wiederholung aus.
+    function updateRepeatControls() {
+      const multiDay = Boolean(editorEnd.value) && (!selectedDate || editorEnd.value > selectedDate);
+      if (multiDay) editorRepeat.value = 'none';
+      editorRepeat.disabled = multiDay;
+      const repeating = editorRepeat.value !== 'none';
+      editorCount.disabled = !repeating;
+      const anything = repeating || multiDay || Boolean(editorCategory.value) || editorNote.value.trim() !== '';
+      editorSettingsButton.classList.toggle('active', anything);
+      editorSettingsButton.setAttribute('aria-expanded', String(!editorSettings.hidden));
+    }
+
+    // Auswahlliste der Kategorien im Eintragefeld neu aufbauen (Auswahl bleibt erhalten)
+    function renderCategoryOptions() {
+      const current = editorCategory.value;
+      editorCategory.replaceChildren(new Option('Keine', ''), ...(settings.categories || []).map(category => new Option(category.name, category.id)));
+      editorCategory.value = (settings.categories || []).some(category => category.id === current) ? current : '';
+    }
+
+    editorSettingsButton.addEventListener('click', () => {
+      editorSettings.hidden = !editorSettings.hidden;
+      updateRepeatControls();
+      positionEditor();
+    });
+    editorRepeat.addEventListener('change', updateRepeatControls);
+    editorNote.addEventListener('input', updateRepeatControls);
+    editorEnd.addEventListener('change', updateRepeatControls);
+    editorCategory.addEventListener('change', updateRepeatControls);
+
+    function deleteEvent(id) {
+      events = events.filter(event => event.id !== id);
+      refreshEventViews();
+      saveEvents();
+    }
+
+    // Kommentar eines Termins setzen (leer = Kommentar entfernen); gilt bei Serien für alle Wiederholungen
+    function updateEventNote(id, note) {
+      const event = events.find(item => item.id === id);
+      if (!event) return;
+      const text = String(note || '').trim();
+      if (text) {
+        event.note = text;
+      } else {
+        delete event.note;
+      }
+      refreshEventViews();
+      saveEvents();
+    }
+
+    editorForm.addEventListener('submit', event => {
+      event.preventDefault();
+      const title = editorText.value.trim();
+      if (!title || !selectedDate) return;
+      const newEvent = {
+        id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
+        date: selectedDate,
+        time: editorTime.value || '',
+        title
+      };
+      if (editorEnd.value && editorEnd.value > selectedDate) {
+        newEvent.endDate = editorEnd.value; // mehrtägig: keine Wiederholung
+      } else if (editorRepeat.value !== 'none') {
+        newEvent.repeat = editorRepeat.value;
+        if (editorCount.value === '1') newEvent.repeatCount = 1;
+      }
+      if (editorCategory.value) newEvent.category = editorCategory.value;
+      const note = editorNote.value.trim();
+      if (note) newEvent.note = note;
+      events.push(newEvent);
+      resetEditorForm();
+      refreshEventViews();
+      saveEvents();
+      editorText.focus();
+    });
+    document.getElementById('editor-close').addEventListener('click', closeEditor);
+    window.addEventListener('resize', closeEditor);
+
+    // Hintergrund: jeden Tag ein zufälliges Bild aus Hintergründe/Naturhintergründe
+    const BACKGROUNDS_DIR = ['Hintergründe', 'Naturhintergründe'];
+    const FALLBACK_BACKGROUND = 'background.avif';
+
+    // Kleiner Zufallsgenerator mit Startwert, damit am selben Tag immer dasselbe Bild kommt
+    function seededRandom(seed) {
+      return function () {
+        seed = (seed + 0x6D2B79F5) | 0;
+        let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+
+    function shuffledOrder(count, seed) {
+      const random = seededRandom(seed * 7919 + count);
+      const order = [...Array(count).keys()];
+      for (let i = count - 1; i > 0; i--) {
+        const j = Math.floor(random() * (i + 1));
+        [order[i], order[j]] = [order[j], order[i]];
+      }
+      return order;
+    }
+
+    // Jedes Bild kommt einmal pro Durchgang dran, nie zweimal hintereinander
+    function dailyImageIndex(count, dayNumber) {
+      if (count <= 1) return 0;
+      if (count === 2) return dayNumber % 2; // bei zwei Bildern einfach abwechseln
+      const round = Math.floor(dayNumber / count);
+      const order = shuffledOrder(count, round);
+      const previousLast = shuffledOrder(count, round - 1)[count - 1];
+      if (order[0] === previousLast) {
+        [order[0], order[1]] = [order[1], order[0]];
+      }
+      return order[dayNumber % count];
+    }
+
+    function setBackground(url) {
+      const image = new Image();
+      image.onload = () => {
+        document.body.style.backgroundImage = `url("${url}")`;
+      };
+      image.src = url;
+    }
+
+    async function updateBackground(now) {
+      const { year, month, day } = berlinDate(now);
+      const dayNumber = Math.floor(Date.UTC(year, month - 1, day) / 86400000);
+
+      try {
+        const response = await fetch('/api/hintergruende', { cache: 'no-store' });
+        const images = await response.json();
+        if (!Array.isArray(images) || images.length === 0) {
+          setBackground(FALLBACK_BACKGROUND);
+          return;
+        }
+        const file = images[dailyImageIndex(images.length, dayNumber)];
+        setBackground([...BACKGROUNDS_DIR, file].map(encodeURIComponent).join('/'));
+      } catch (error) {
+        setBackground(FALLBACK_BACKGROUND);
+      }
+    }
+
+    function updateClock() {
+      const now = new Date();
+      document.getElementById('clock-time').textContent = timeFormat.format(now);
+      document.getElementById('clock-date').textContent = dateFormat.format(now);
+
+      // Kalender und Hintergrund nur neu setzen, wenn ein neuer Tag begonnen hat
+      const dayKey = partsFormat.format(now);
+      if (dayKey !== renderedDay) {
+        renderedDay = dayKey;
+        if (!document.body.classList.contains('calendar-open')) viewYear = null; // neuer Monat um Mitternacht
+        renderCalendar(now);
+        updateBackground(now);
+      }
+
+      // "Nächster Termin" jede Minute neu prüfen
+      const minuteKey = berlinStamp(now).time;
+      if (minuteKey !== renderedMinute) {
+        renderedMinute = minuteKey;
+        renderNextEvent(now);
+      }
+    }
+
+    // Ansichten: Startseite oder eine große Ansicht. Die Adresse (#kalender, #ideen, #gewohnheiten)
+    // merkt sich die Ansicht, damit "Zurück" im Browser klappt.
+    const VIEWS = {
+      '#kalender': { name: 'calendar', bodyClass: 'calendar-open' },
+      '#ideen': { name: 'ideas', bodyClass: 'ideas-open' },
+      '#gewohnheiten': { name: 'habits', bodyClass: 'habits-open' },
+      '#winterarc': { name: 'winter', bodyClass: 'winter-open' }
+    };
+
+    function currentView() {
+      return VIEWS[location.hash] ? VIEWS[location.hash].name : null;
+    }
+
+    // Das Element der gerade offenen großen Ansicht (Klicks darin schließen sie nicht)
+    function viewElement(name) {
+      if (name === 'calendar') return calendar;
+      return document.querySelector(`[data-view-panel="${name}"]`);
+    }
+
+    function applyView() {
+      const view = currentView();
+      for (const { name, bodyClass } of Object.values(VIEWS)) {
+        document.body.classList.toggle(bodyClass, view === name);
+      }
+      document.body.classList.toggle('view-open', Boolean(view));
+      const calendarOpen = view === 'calendar';
+      calendar.setAttribute('aria-label', calendarOpen ? 'Kalender' : 'Kalender öffnen');
+      if (!calendarOpen) {
+        closeEditor();
+        // Zurück auf der Startseite: Mini-Kalender zeigt wieder den aktuellen Monat
+        if (viewYear !== null && renderedDay) resetMonth();
+      }
+      document.dispatchEvent(new CustomEvent('view-changed', { detail: { view } }));
+    }
+
+    function openView(hash) {
+      if (location.hash !== hash) location.hash = hash.slice(1);
+    }
+
+    function openCalendar() {
+      openView('#kalender');
+    }
+
+    function goHome() {
+      if (location.hash) {
+        history.pushState(null, '', location.pathname + location.search);
+      }
+      applyView();
+    }
+
+    // Klick auf den Kalender: auf der Startseite öffnen; in der großen Ansicht einen Tag auswählen
+    calendar.addEventListener('click', event => {
+      if (!document.body.classList.contains('calendar-open')) {
+        openCalendar();
+        return;
+      }
+      const path = event.composedPath();
+      const nav = event.target.closest('.cal-nav');
+      if (nav) {
+        shiftMonth(Number(nav.dataset.step));
+        return;
+      }
+      if (event.target.closest('.cal-today')) {
+        resetMonth();
+        return;
+      }
+      const cell = event.target.closest('.day');
+      if (cell) {
+        openEditor(cell);
+      } else if (!path.includes(editor)) {
+        closeEditor();
+      }
+    });
+    calendar.addEventListener('keydown', event => {
+      if (event.target !== calendar) return; // Tippen in den Eingabefeldern nicht abfangen
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        openCalendar();
+      }
+    });
+    document.getElementById('home-button').addEventListener('click', goHome);
+
+    // In einer großen Ansicht: Klick irgendwo außerhalb führt zurück zur Startseite.
+    // composedPath statt contains, weil z. B. ein Löschen-Button beim Klick schon entfernt sein kann.
+    // Elemente mit data-keep-calendar (Einstellungen, Edith) lassen die Ansicht offen.
+    document.addEventListener('click', event => {
+      const view = currentView();
+      if (!view) return;
+      const path = event.composedPath();
+      const keepOpen = path.some(el => el instanceof HTMLElement && el.hasAttribute('data-keep-calendar'));
+      if (!path.includes(viewElement(view)) && !keepOpen) {
+        goHome();
+      }
+    });
+    // Escape: erst Einstellungen bzw. Eintragefeld schließen, dann die große Ansicht
+    document.addEventListener('keydown', event => {
+      if (event.key !== 'Escape') return;
+      if (document.body.classList.contains('settings-open')) {
+        closeSettings();
+      } else if (selectedDate) {
+        closeEditor();
+      } else if (currentView()) {
+        goHome();
+      }
+    });
+    window.addEventListener('hashchange', applyView);
+    window.addEventListener('popstate', applyView);
+
+    // ---------- Einstellungen ----------
+    // Gespeichert in einstellungen.json; andere Teile (z. B. Edith) hören auf das Ereignis "settings-changed"
+    const settings = {
+      assistantEnabled: false,
+      assistantWakeWord: true,
+      assistantSpeak: true,
+      // Edith stumm (Doppelklick / langes Drücken auf den Knopf): nimmt dann nichts auf
+      assistantMuted: false,
+      // Motivation: Kachel anzeigen; false = gespeicherte Links, true = live von ausgewählten Accounts
+      motivationEnabled: true,
+      motivationLive: false,
+      // Arc: an/aus, bei verpasstem Tag zurücksetzen, Ziel in Tagen ('custom' → arcGoalCustom), Starttag (YYYY-MM-DD)
+      winterArcEnabled: false,
+      winterArcReset: false,
+      winterArcGoal: '90',
+      arcGoalCustom: '50',
+      winterArcStart: null,
+      // Aussehen: 'winter' (blau, Schneeflocken) oder 'custom' mit eigenem Namen, Farbe und fallenden Emojis
+      arcTheme: 'winter',
+      arcName: 'Arc',
+      arcColor: '#ff8a3d',
+      arcEmojis: '🔥 💪 ⭐',
+      // Kategorien für Termine: { id, name, color } – Farbe aus CATEGORY_COLORS
+      categories: [
+        { id: 'urlaub', name: 'Urlaub', color: '#f5c542' },
+        { id: 'arbeit', name: 'Arbeit', color: '#4f8ff7' },
+        { id: 'privat', name: 'Privat', color: '#43c96b' },
+        { id: 'gesundheit', name: 'Gesundheit', color: '#ef5350' }
+      ]
+    };
+    const MAX_CATEGORIES = 10;
+    const categoryList = document.getElementById('category-list');
+    const categoryAddButton = document.getElementById('category-add');
+    let paletteOpenFor = null; // Kategorie, deren Farbauswahl gerade offen ist
+
+    function renderCategorySettings() {
+      const categories = settings.categories || [];
+      categoryList.replaceChildren(...categories.map(category => {
+        const row = document.createElement('div');
+        row.className = 'category-row';
+
+        const swatch = document.createElement('button');
+        swatch.type = 'button';
+        swatch.className = 'category-swatch';
+        swatch.style.setProperty('--c', category.color);
+        swatch.title = 'Farbe ändern';
+        swatch.setAttribute('aria-label', `Farbe von „${category.name}“ ändern`);
+        swatch.addEventListener('click', () => {
+          paletteOpenFor = paletteOpenFor === category.id ? null : category.id;
+          renderCategorySettings();
+        });
+
+        const name = document.createElement('input');
+        name.type = 'text';
+        name.className = 'category-name';
+        name.value = category.name;
+        name.maxLength = 30;
+        name.setAttribute('aria-label', 'Name der Kategorie');
+        name.addEventListener('change', () => {
+          const value = name.value.trim();
+          if (!value) {
+            name.value = category.name;
+            return;
+          }
+          category.name = value;
+          categoriesChanged();
+        });
+
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'category-remove';
+        remove.textContent = '×';
+        remove.title = 'Kategorie löschen (Termine bleiben erhalten)';
+        remove.setAttribute('aria-label', `Kategorie „${category.name}“ löschen`);
+        remove.addEventListener('click', () => {
+          settings.categories = categories.filter(item => item.id !== category.id);
+          categoriesChanged();
+        });
+
+        row.append(swatch, name, remove);
+
+        if (paletteOpenFor === category.id) {
+          const palette = document.createElement('div');
+          palette.className = 'category-palette';
+          for (const color of CATEGORY_COLORS) {
+            const option = document.createElement('button');
+            option.type = 'button';
+            option.className = `palette-swatch${color.value === category.color ? ' selected' : ''}`;
+            option.style.setProperty('--c', color.value);
+            option.title = color.name;
+            option.setAttribute('aria-label', color.name);
+            option.addEventListener('click', () => {
+              category.color = color.value;
+              paletteOpenFor = null;
+              categoriesChanged();
+            });
+            palette.appendChild(option);
+          }
+          row.appendChild(palette);
+        }
+        return row;
+      }));
+      categoryAddButton.disabled = categories.length >= MAX_CATEGORIES;
+    }
+
+    function addCategory() {
+      const categories = settings.categories || (settings.categories = []);
+      if (categories.length >= MAX_CATEGORIES) return;
+      const used = new Set(categories.map(category => category.color));
+      const color = (CATEGORY_COLORS.find(item => !used.has(item.value)) || CATEGORY_COLORS[0]).value;
+      const category = { id: 'k' + Date.now().toString(36), name: 'Neue Kategorie', color };
+      categories.push(category);
+      categoriesChanged();
+      const inputs = categoryList.querySelectorAll('.category-name');
+      const input = inputs[inputs.length - 1];
+      if (input) {
+        input.focus();
+        input.select();
+      }
+    }
+
+    // Nach jeder Änderung: speichern und Kalender/Eintragefeld neu zeichnen
+    function categoriesChanged() {
+      renderCategorySettings();
+      renderCategoryOptions();
+      refreshEventViews();
+      announceSettings();
+      saveSettings();
+    }
+
+    categoryAddButton.addEventListener('click', addCategory);
+    const settingsButton = document.getElementById('settings-button');
+    const settingsDrawer = document.getElementById('settings-drawer');
+
+    function openSettings() {
+      document.body.classList.add('settings-open');
+      settingsDrawer.setAttribute('aria-hidden', 'false');
+      settingsButton.setAttribute('aria-expanded', 'true');
+    }
+
+    function closeSettings() {
+      document.body.classList.remove('settings-open');
+      settingsDrawer.setAttribute('aria-hidden', 'true');
+      settingsButton.setAttribute('aria-expanded', 'false');
+    }
+
+    function renderSettings() {
+      for (const input of settingsDrawer.querySelectorAll('[data-setting]')) {
+        if (input.type === 'checkbox') {
+          input.checked = Boolean(settings[input.dataset.setting]);
+        } else {
+          input.value = settings[input.dataset.setting];
+        }
+      }
+      renderCategorySettings();
+      renderArcSettings();
+      // Unter-Optionen nur bedienbar, wenn die Hauptoption (Standard: Assistent) an ist
+      for (const row of settingsDrawer.querySelectorAll('.sub-setting')) {
+        const enabled = Boolean(settings[row.dataset.depends || 'assistantEnabled']);
+        row.classList.toggle('disabled', !enabled);
+        for (const control of row.querySelectorAll('input, select, button')) {
+          control.disabled = !enabled;
+        }
+      }
+    }
+
+    // ---------- Arc: eigener Name, Farbe, Emojis, eigenes Ziel ----------
+    const ARC_EMOJI_PRESETS = ['🔥 💪 ⭐', '☀️ 🌴 🌊', '🏋️ 💪 🥇', '📚 ✏️ 🧠', '🍂 🍁 🎃', '🌸 🌷 🦋', '💰 📈 💎', '🧘 🌿 ✨'];
+    const arcColorsBox = document.getElementById('arc-colors');
+    const arcCustomColor = arcColorsBox.querySelector('.arc-color-custom');
+
+    function renderArcSettings() {
+      const custom = settings.arcTheme === 'custom';
+      document.getElementById('arc-custom-settings').hidden = !custom;
+      document.getElementById('arc-goal-custom-row').hidden = settings.winterArcGoal !== 'custom';
+      document.getElementById('arc-settings-title').textContent = custom
+        ? `${[...new Intl.Segmenter('de', { granularity: 'grapheme' }).segment(settings.arcEmojis || '')].map(part => part.segment).find(part => part.trim()) || '🔥'} ${String(settings.arcName || '').trim() || 'Arc'}`
+        : '❄ Winter Arc';
+
+      // Farbkreise (gleiche Palette wie bei den Kategorien) + eigene Farbe
+      const current = String(settings.arcColor || '').toLowerCase();
+      const swatches = CATEGORY_COLORS.map(color => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = `palette-swatch${color.value.toLowerCase() === current ? ' selected' : ''}`;
+        button.style.setProperty('--c', color.value);
+        button.title = color.name;
+        button.setAttribute('aria-label', color.name);
+        button.addEventListener('click', () => updateSetting('arcColor', color.value));
+        return button;
+      });
+      arcCustomColor.classList.toggle('selected', !CATEGORY_COLORS.some(color => color.value.toLowerCase() === current));
+      arcCustomColor.style.setProperty('--c', settings.arcColor);
+      arcColorsBox.replaceChildren(...swatches, arcCustomColor);
+
+      // Emoji-Vorschläge zum schnellen Auswählen
+      document.getElementById('arc-emoji-presets').replaceChildren(...ARC_EMOJI_PRESETS.map(preset => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = `emoji-preset${preset === settings.arcEmojis ? ' selected' : ''}`;
+        button.textContent = preset.replace(/ /g, '');
+        button.title = 'Diese Emojis nehmen';
+        button.addEventListener('click', () => updateSetting('arcEmojis', preset));
+        return button;
+      }));
+    }
+
+    function updateSetting(key, value) {
+      settings[key] = value;
+      renderSettings();
+      announceSettings();
+      saveSettings();
+    }
+
+    function announceSettings() {
+      document.dispatchEvent(new CustomEvent('settings-changed', { detail: { ...settings } }));
+    }
+
+    async function loadSettings() {
+      try {
+        const response = await fetch('/api/einstellungen', { cache: 'no-store' });
+        const data = await response.json();
+        if (data && typeof data === 'object' && !Array.isArray(data)) {
+          if (!Array.isArray(data.categories)) delete data.categories; // Standard-Kategorien behalten
+          Object.assign(settings, data);
+        }
+        // Der Live-Abruf von Instagram brauchte den lokalen Server – den gibt es online nicht
+        settings.motivationLive = false;
+      } catch (error) {
+        // ohne Server: Standardwerte behalten
+      }
+      renderSettings();
+      renderCategoryOptions();
+      refreshEventViews(); // Farben der Kategorien anwenden
+      announceSettings();
+    }
+
+    async function saveSettings() {
+      try {
+        await fetch('/api/einstellungen', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(settings)
+        });
+      } catch (error) {
+        // ohne Server bleibt die Einstellung nur bis zum Neuladen
+      }
+    }
+
+    settingsDrawer.addEventListener('change', event => {
+      const key = event.target.dataset.setting;
+      if (!key) return;
+      settings[key] = event.target.type === 'checkbox' ? event.target.checked : event.target.value;
+      renderSettings();
+      announceSettings();
+      saveSettings();
+    });
+    settingsButton.addEventListener('click', () => {
+      document.body.classList.contains('settings-open') ? closeSettings() : openSettings();
+    });
+    document.getElementById('drawer-close').addEventListener('click', closeSettings);
+    document.getElementById('drawer-backdrop').addEventListener('click', closeSettings);
+    document.getElementById('home-button').addEventListener('click', closeSettings);
+
+    applyView();
+    updateClock();
+    loadEvents();
+    setInterval(updateClock, 1000);
+  </script>
+  <script src="tracker.js"></script>
+  <script src="edith.js"></script>
+  <script>
+    loadSettings();
+  </script>
+</body>
+</html>

@@ -1,0 +1,6 @@
+{
+  "hinweis": "Diese Datei in instagram.json umbenennen und unten deinen Zugangsschluessel (Access Token) aus der Meta-App eintragen. igUserId darf leer bleiben, dann wird dein Instagram-Profikonto ueber die verknuepfte Facebook-Seite gesucht. Niemals weitergeben!",
+  "accessToken": "HIER-DEINEN-ZUGANGSSCHLUESSEL-EINTRAGEN",
+  "igUserId": "",
+  "apiVersion": "v25.0"
+}

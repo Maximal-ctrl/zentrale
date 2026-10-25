@@ -1,0 +1,14 @@
+# Persoenliche Daten, Codes und Schluessel bleiben auf diesem PC
+# (die echten Daten liegen im privaten Daten-Repo auf GitHub)
+termine.json
+einstellungen.json
+ideen.json
+gewohnheiten.json
+motivation.json
+zugangscodes.json
+openai.json
+instagram.json
+migration/
+einrichtung.html
+Startseite.zip
+.claude/
